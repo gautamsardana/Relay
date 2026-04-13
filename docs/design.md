@@ -171,8 +171,21 @@ The worker binary runs on a single node with a configurable number of goroutines
 ## Error Handling
 
 - Workers retry a failed step up to N times (configurable)
-- After retries are exhausted, the agent is invoked to generate a recovery plan
-- If the agent cannot recover, the workflow is marked `failed`
+- After retries are exhausted, the step is marked `failed` and the workflow is marked `failed`
+- No agent recovery call in v1 — see Future Ideas
+
+### Reconciler
+
+A reconciler cron runs every N seconds to handle the case where a worker process dies before publishing the next step's RabbitMQ event (e.g. OOM kill, crash).
+
+**Logic:**
+1. Find workflows where `status = running` AND no step has `status = running`
+2. Find the lowest-position step with `status = pending`
+3. Re-publish that step's event to RabbitMQ
+
+**Key distinction:** The reconciler resumes from the next *pending* step after the last *completed* one — not from the failed step. Completed steps' outputs are already in Postgres and will be interpolated normally by the worker.
+
+**Idempotency guard:** Workers must mark a step as `running` *before* beginning execution — not after. This ensures the reconciler never re-publishes a step that is actively being processed.
 
 ---
 
@@ -188,7 +201,7 @@ A queue is justified specifically for **horizontal worker scaling independent of
 The API server, planner, and agent layer are grouped into one binary because every request flows through all three sequentially — they scale together. Workers are a separate binary because they scale independently based on step execution load.
 
 ### Agent Role: Planner Only
-The agent (Claude) is responsible for two things only: generating the initial step plan, and generating recovery steps on failure. It does not execute steps. Execution is done entirely by workers calling tools directly. This keeps Claude calls minimal (one per workflow creation, one per failure) and keeps workers fast and deterministic.
+The agent (Claude) is responsible for one thing only: generating the initial step plan. It does not execute steps and is not called on failure in v1. Execution is done entirely by workers calling tools directly. This keeps Claude calls minimal (one per workflow creation) and keeps workers fast and deterministic.
 
 ### Step Input Resolution: Template Interpolation
 Claude front-loads all intelligence at plan-generation time by encoding step dependencies as template references (e.g. `{{steps[0].output.results}}`). Workers resolve these at execution time by reading from Postgres. This avoids a Claude call per step execution, which would be slow and expensive (10 steps = 10 Claude calls). The tradeoff is that Claude must know tool output shapes upfront — enforced by including response schemas in tool descriptions.
@@ -196,5 +209,12 @@ Claude front-loads all intelligence at plan-generation time by encoding step dep
 ### Storage as Source of Truth
 All state — workflow status, step inputs, step outputs, errors — lives in Postgres. RabbitMQ messages are intentionally thin (just IDs). This means workers are stateless: they can crash and restart without losing anything. It also means the worker directly updates step state rather than routing through the planner, keeping the architecture simple.
 
-### Future: Semantic Caching
-For repeated similar commands, the planning step (Claude call) could be skipped by caching the generated step plan and retrieving it via semantic similarity (vector embeddings). Only the plan is cached — workers still execute fresh. This is out of scope for v1 but a natural next optimization to reduce latency and cost.
+---
+
+## Future Ideas
+
+### Intelligent Failure Recovery
+When a step fails after all retries are exhausted, instead of immediately marking the workflow failed, call the agent with full context — the original command, all completed steps and their outputs, the failed step and its error message — and ask it to generate replacement steps. The worker inserts the replacement steps into Postgres (adjusting positions) and publishes the first one to RabbitMQ. If the agent cannot generate a recovery plan, the workflow is marked `failed`. Open questions to resolve before implementing: how Claude signals it cannot recover, how positions are adjusted for replacement steps, and whether there should be a cap on recovery attempts per workflow.
+
+### Semantic Caching
+For repeated similar commands, the planning step (Claude call) could be skipped by caching the generated step plan in Redis and retrieving it via semantic similarity (vector embeddings). Only the plan is cached — workers still execute fresh. This is out of scope for v1 but a natural next optimization to reduce latency and cost.
