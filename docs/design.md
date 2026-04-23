@@ -45,7 +45,7 @@ web/          — frontend UI
 4. Planner validates that every tool name Claude returned exists in the tool registry — rejects the plan and marks workflow `failed` if not
 5. Planner marks workflow status → `processing`, publishes step 1's event to RabbitMQ queue `relay.steps`
 6. A worker consumes the event, atomically claims the step (`UPDATE ... WHERE status='pending'`), marks it `processing`, executes it via the appropriate tool
-7. On success → worker marks step `success`, publishes next step's event to RabbitMQ; if no steps remain, marks workflow `success`
+7. On success → worker marks step `success`, immediately publishes next step's event to RabbitMQ (zero latency between steps); if no steps remain, marks workflow `success`
 8. On failure → worker increments `retry_count`, retries up to max; after max retries, marks step `failed` and workflow `failed`
 9. Workflow completes when all steps are marked `success`
 
@@ -211,18 +211,20 @@ The worker binary runs with a configurable number of goroutines consuming from `
 
 ### Reconciler
 
-A reconciler cron runs inside the planner binary every N seconds to handle the case where a worker process dies before publishing the next step's RabbitMQ event (e.g. OOM kill, crash).
+Workers publish the next step directly after completing one — no cron involvement in normal progression. The reconciler's only job is crash recovery: handle steps stuck in `processing` because the worker died mid-execution before finishing.
+
+A reconciler cron runs inside the planner binary every N seconds (default 60s).
 
 **Logic:**
-1. Find workflows where `status = processing` AND no step has `status = processing`
-2. Find the lowest `step_number` step with `status = pending`
-3. Re-publish that step's event to RabbitMQ
+1. Find all steps where `status = 'processing'` AND `updated_at < NOW() - 5 minutes`
+2. For each stuck step:
+   - Increment `retry_count`
+   - If `retry_count >= MAX_RETRIES` → mark step `failed`, mark workflow `failed`
+   - Otherwise → reset step to `pending`, re-publish its event to RabbitMQ using the same `step_id`
 
-**Key distinctions:**
-- Only touches `processing` workflows — `init` workflows are the planner's exclusive territory (Claude may still be generating the plan)
-- Resumes from the next `pending` step after the last `success` one — completed steps' outputs are in Postgres and will be interpolated normally by the worker
+**Timeout:** 5 minutes — safely above the worst-case tool execution time (~30s for a Claude transform call). Uses `updated_at`, which is set when the worker marks the step `processing`.
 
-**Idempotency:** The atomic step claiming (`WHERE status='pending'`) in the worker ensures a reconciler re-publish of an already-claimed step is safely ignored.
+**Idempotency:** The atomic step claiming (`WHERE status='pending'`) in the worker ensures a reconciler re-publish of a step that recovered on its own is safely ignored.
 
 ---
 
