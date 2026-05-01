@@ -1,7 +1,5 @@
 # Relay v1 Implementation Plan
 
-> **Note:** You are implementing this yourself. Use this plan as a roadmap — work through phases in order, ask for help on specific pieces as needed.
-
 **Goal:** Build a working AI orchestrator that accepts natural language commands, breaks them into steps via Claude, and executes them asynchronously via RabbitMQ workers with full state in Postgres.
 
 **Architecture:** Two binaries — `cmd/api` (API server + planner + agent) and `cmd/worker` (step executor). Postgres is the source of truth; RabbitMQ carries thin step events. The planner binary also runs reconciler and scheduler crons.
