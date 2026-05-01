@@ -1,8 +1,10 @@
 package main
 
-import(
+import (
 	"log"
-	"/internal/config"
+	"fmt"
+
+	"github.com/gautamsardana/relay/internal/config"
 )
 
 func main() {
@@ -10,5 +12,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
-	print(config)
+	fmt.Println(config.Env.DatabaseURL)
 }

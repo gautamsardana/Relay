@@ -1,6 +1,9 @@
+package config
+
 import (
-	"config"
-	_ "github.com/joho/godotenv"
+	"fmt"
+
+	"github.com/spf13/viper"
 	_ "github.com/spf13/viper"
 )
 
@@ -13,9 +16,9 @@ type Env struct {
 }
 
 func LoadConfig() (*Config, error){
-	config = &Config{}
+	config := &Config{}
 
-	loadEnv, err := LoadEnv(config)
+	err := LoadEnv(config)
 	if err != nil {
 		return nil, err
 	}
@@ -23,9 +26,12 @@ func LoadConfig() (*Config, error){
 }
 
 func LoadEnv(config *Config) error {
+	viper.AutomaticEnv()
+	
 	config.Env = &Env{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
+		DatabaseURL: viper.GetString("DATABASE_URL"),
 	}
+
 	if config.Env.DatabaseURL == "" {
 		return fmt.Errorf("DATABASE_URL is not set")
 	}
