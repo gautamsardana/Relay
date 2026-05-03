@@ -1,3 +1,4 @@
+-- Active: 1777597968626@@127.0.0.1@5432@postgres
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TYPE step_status AS ENUM ('pending', 'processing', 'success', 'failed');
@@ -9,7 +10,7 @@ CREATE TABLE steps (
     tool         TEXT NOT NULL,
     description  TEXT NOT NULL,
     input        JSONB NOT NULL DEFAULT '{}',
-    output       JSONB,
+    output       JSONB NOT NULL DEFAULT '{}',
     status       step_status NOT NULL DEFAULT 'pending',
     retry_count  INT NOT NULL DEFAULT 0,
     error        TEXT,

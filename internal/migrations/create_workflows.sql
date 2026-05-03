@@ -1,3 +1,4 @@
+-- Active: 1777842247087@@127.0.0.1@5432@postgres
 CREATE TYPE workflow_status AS ENUM ('init', 'processing', 'success', 'failed');
 
 CREATE TABLE workflows (
