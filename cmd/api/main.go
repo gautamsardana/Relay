@@ -14,5 +14,8 @@ func main() {
 	}
 	
 	queue.Connect(config)
-	defer config.Queue.Close()
+	defer config.QueueConfig.Conn.Close()
+	defer config.QueueConfig.Channel.Close()
+
+	queue.PublishStep(config, queue.StepEvent{})
 }

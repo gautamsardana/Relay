@@ -9,12 +9,18 @@ import (
 
 type Config struct {
 	Env *Env
-	Queue *amqp.Connection
+	QueueConfig QueueConfig
 }
 
 type Env struct {
 	DatabaseURL string
 	QueueURL string
+}
+
+type QueueConfig struct {
+	Conn *amqp.Connection
+	Channel *amqp.Channel
+	Queue amqp.Queue
 }
 
 func LoadConfig() (*Config, error){
