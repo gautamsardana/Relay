@@ -3,16 +3,18 @@ package config
 import (
 	"fmt"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/spf13/viper"
-	_ "github.com/spf13/viper"
 )
 
 type Config struct {
 	Env *Env
+	Queue *amqp.Connection
 }
 
 type Env struct {
 	DatabaseURL string
+	QueueURL string
 }
 
 func LoadConfig() (*Config, error){
@@ -30,6 +32,7 @@ func LoadEnv(config *Config) error {
 	
 	config.Env = &Env{
 		DatabaseURL: viper.GetString("DATABASE_URL"),
+		QueueURL: viper.GetString("QUEUE_URL"),
 	}
 
 	if config.Env.DatabaseURL == "" {

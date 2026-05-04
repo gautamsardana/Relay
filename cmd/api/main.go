@@ -2,9 +2,9 @@ package main
 
 import (
 	"log"
-	"fmt"
 
 	"github.com/gautamsardana/relay/internal/config"
+	"github.com/gautamsardana/relay/internal/queue"
 )
 
 func main() {
@@ -12,5 +12,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
-	fmt.Println(config.Env.DatabaseURL)
+	
+	queue.Connect(config)
+	defer config.Queue.Close()
 }
