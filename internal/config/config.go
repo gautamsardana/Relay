@@ -34,7 +34,13 @@ func LoadConfig() (*Config, error){
 }
 
 func LoadEnv(config *Config) error {
-	viper.AutomaticEnv()
+	viper.SetConfigName(".env")
+    viper.SetConfigType("env")
+    viper.AddConfigPath("internal/config")
+	
+	if err := viper.ReadInConfig(); err != nil {
+        return fmt.Errorf("error reading .env file: %w", err)
+    }
 	
 	config.Env = &Env{
 		DatabaseURL: viper.GetString("DATABASE_URL"),
