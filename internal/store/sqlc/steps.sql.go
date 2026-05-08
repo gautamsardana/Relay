@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	json "encoding/json"
 	models "github.com/gautamsardana/relay/internal/models"
 )
 

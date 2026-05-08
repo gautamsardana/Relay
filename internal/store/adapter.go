@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"github.com/sqlc-dev/pqtype"
 	"github.com/gautamsardana/relay/internal/models"
 	"github.com/gautamsardana/relay/internal/store/sqlc"
 )
@@ -71,12 +70,7 @@ func fromModelWorkflowUpdateStatus(mw *models.Workflow) sqlc.UpdateWorkflowStatu
 
 func fromModelStepCreate(ms *models.Step) sqlc.CreateStepParams {
     inputBytes, _ := json.Marshal(ms.Input)
-
-    var output pqtype.NullRawMessage
-    if ms.Output != nil {
-        outputBytes, _ := json.Marshal(ms.Output)
-        output = pqtype.NullRawMessage{RawMessage: outputBytes, Valid: true}
-    }
+	outputBytes, _ := json.Marshal(ms.Output)
 
     return sqlc.CreateStepParams{
         StepID:      ms.StepID,
@@ -85,7 +79,7 @@ func fromModelStepCreate(ms *models.Step) sqlc.CreateStepParams {
         Tool:        ms.Tool,
         Description: ms.Description,
         Input:       inputBytes,
-        Output:      output,
+        Output:      outputBytes,
         Status:      ms.Status,
         RetryCount:  int32(ms.RetryCount),
         Error:       sql.NullString{String: ms.Error, Valid: ms.Error != ""},

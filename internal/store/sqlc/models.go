@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"time"
 
-	json "encoding/json"
 	models "github.com/gautamsardana/relay/internal/models"
 )
 
