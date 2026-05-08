@@ -3,13 +3,11 @@ package config
 import (
 	"fmt"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
 	Env *Env
-	QueueConfig QueueConfig
 }
 
 type Env struct {
@@ -17,11 +15,6 @@ type Env struct {
 	QueueURL string
 }
 
-type QueueConfig struct {
-	Conn *amqp.Connection
-	Channel *amqp.Channel
-	Queue amqp.Queue
-}
 
 func LoadConfig() (*Config, error){
 	config := &Config{}
@@ -41,7 +34,7 @@ func LoadEnv(config *Config) error {
 	if err := viper.ReadInConfig(); err != nil {
         return fmt.Errorf("error reading .env file: %w", err)
     }
-	
+
 	config.Env = &Env{
 		DatabaseURL: viper.GetString("DATABASE_URL"),
 		QueueURL: viper.GetString("QUEUE_URL"),
