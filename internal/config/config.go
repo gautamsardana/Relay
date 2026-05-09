@@ -8,13 +8,21 @@ import (
 
 type Config struct {
 	Env *Env
+	App App
 }
 
 type Env struct {
 	DatabaseURL string
 	QueueURL string
+
+	GPTApiKey string
+	ClaudeApiKey string
 }
 
+type App struct {
+	AIPrimary string
+	AISecondary string
+}
 
 func LoadConfig() (*Config, error){
 	config := &Config{}
@@ -23,6 +31,12 @@ func LoadConfig() (*Config, error){
 	if err != nil {
 		return nil, err
 	}
+
+	err = LoadAppConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
 	return config, nil
 }
 
@@ -38,10 +52,27 @@ func LoadEnv(config *Config) error {
 	config.Env = &Env{
 		DatabaseURL: viper.GetString("DATABASE_URL"),
 		QueueURL: viper.GetString("QUEUE_URL"),
+
+		GPTApiKey: viper.GetString("GPT_API_KEY"),
+		ClaudeApiKey: viper.GetString("Claude_API_KEY"),
 	}
 
 	if config.Env.DatabaseURL == "" {
 		return fmt.Errorf("DATABASE_URL is not set")
 	}
+	return nil
+}
+
+func LoadAppConfig(config *Config) error {
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("internal/config")
+
+	if err := viper.ReadInConfig(); err != nil {
+        return fmt.Errorf("error reading config file: %w", err)
+    }
+
+	config.App.AIPrimary = viper.GetString("ai_primary")
+	config.App.AISecondary = viper.GetString("ai_secondary")
 	return nil
 }

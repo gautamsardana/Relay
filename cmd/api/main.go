@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
+	"github.com/gautamsardana/relay/internal/agent"
+	"github.com/gautamsardana/relay/internal/api"
 	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/queue"
 	"github.com/gautamsardana/relay/internal/store"
@@ -11,6 +14,7 @@ import (
 func main() {
 	config, err := config.LoadConfig()
 	failOnError(err, "Failed to load config")
+	fmt.Println(config.App.AIPrimary, config.App.AISecondary)
 	
 	store, err := store.New(config)
 	failOnError(err, "Failed to connect to DB")
@@ -21,9 +25,14 @@ func main() {
 	defer q.Conn.Close()
 	defer q.Channel.Close()
 
-	// 3. initialize agent
+	// 3. initialize agents
+	_, err = agent.NewAgentManager(config)
+	failOnError(err, "Failed to connect to agents")
+
 	// 4. initialize tools
-	// 5. start server 
+
+	// 5. initialize planner
+	api.ListenAndServe()
 }
 
 func failOnError(err error, msg string) {

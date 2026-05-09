@@ -12,7 +12,7 @@ import (
 type Planner struct {
     store    *store.Store
 	queue    *queue.QueueManager
-    agent    agent.Agent
+    agent    *agent.AgentManager
     registry *tools.Registry
 }
 

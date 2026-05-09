@@ -8,6 +8,10 @@ import (
 
 type FakeAgent struct {}
 
+func NewFAaaa() (*FakeAgent, error){
+    return &FakeAgent{}, nil
+}
+
 // caller initiates FakeAgent using - var _ Agent = (*FakeAgent)(nil)
 func (fa *FakeAgent) GeneratePlan(ctx context.Context, request string, tools []tools.Tool) ([]StepPlan, error){
 	return []StepPlan{
