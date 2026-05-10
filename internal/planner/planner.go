@@ -16,6 +16,15 @@ type Planner struct {
     registry *tools.Registry
 }
 
-func (p *Planner) HandleRequest(ctx context.Context, request string) (string, error){
+func New(s *store.Store, q *queue.QueueManager, a *agent.AgentManager, r *tools.Registry) *Planner{
+	return &Planner {
+		store: s,
+		queue: q,
+		agent: a,
+		registry: r,
+	}
+}
+
+func (p *Planner) CreateWorkflow(ctx context.Context, request string) (string, error){
 	return "", nil
 }
