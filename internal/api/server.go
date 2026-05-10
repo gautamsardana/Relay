@@ -1,7 +1,7 @@
 package api
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/gautamsardana/relay/internal/planner"
@@ -22,10 +22,10 @@ func (s *Server) ListenAndServe(){
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Post("/workflows", s.CreateWorkflow)
+	r.Post("/workflow", s.CreateWorkflow)
 	r.Get("/workflows", s.ListWorkflows)
 	r.Get("/workflows/{id}", s.GetWorkflow)
 	
-	log.Printf("listening on port 8080...")
+	slog.Info("listening on port 8080...")
 	http.ListenAndServe(":8080", r)
 }

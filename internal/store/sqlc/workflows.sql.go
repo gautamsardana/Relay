@@ -23,6 +23,7 @@ type CreateWorkflowParams struct {
 	Status     models.WorkflowStatus `json:"status"`
 }
 
+// Active: 1777597968626@@127.0.0.1@5432@postgres
 func (q *Queries) CreateWorkflow(ctx context.Context, arg CreateWorkflowParams) (Workflow, error) {
 	row := q.db.QueryRowContext(ctx, createWorkflow, arg.WorkflowID, arg.Request, arg.Status)
 	var i Workflow

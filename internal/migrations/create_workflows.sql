@@ -2,7 +2,7 @@
 CREATE TYPE workflow_status AS ENUM ('init', 'processing', 'success', 'failed');
 
 CREATE TABLE workflows (
-    workflow_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workflow_id  UUID PRIMARY KEY,
     request      TEXT NOT NULL,
     status       workflow_status NOT NULL DEFAULT 'init',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),

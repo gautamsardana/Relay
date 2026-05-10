@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -13,6 +14,7 @@ func (s *Server) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
     
     workflowID, err := s.planner.CreateWorkflow(r.Context(), req.Request)
     if err != nil {
+		slog.Error("api/CreateWorkflow", "error", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }

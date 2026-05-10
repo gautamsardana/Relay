@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TYPE step_status AS ENUM ('pending', 'processing', 'success', 'failed');
 
 CREATE TABLE steps (
-    step_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    step_id      UUID PRIMARY KEY,
     workflow_id  UUID NOT NULL REFERENCES workflows(workflow_id),
     step_number  INT NOT NULL,
     tool         TEXT NOT NULL,

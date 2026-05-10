@@ -1,8 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"log/slog"
+	"os"
 
 	"github.com/gautamsardana/relay/internal/agent"
 	"github.com/gautamsardana/relay/internal/api"
@@ -13,6 +14,11 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	slog.SetDefault(logger)
+	
 	config, err := config.LoadConfig()
 	failOnError(err, "Failed to load config")
 	
@@ -25,13 +31,11 @@ func main() {
 	defer q.Conn.Close()
 	defer q.Channel.Close()
 
-	// 3. initialize agents
 	agent, err := agent.NewAgentManager(config)
 	failOnError(err, "Failed to connect to agents")
 
 	// 4. initialize tools
 
-	// 5. initialize planner
 	planner := planner.New(store, q, agent, nil)
 
 	server := api.New(planner)
