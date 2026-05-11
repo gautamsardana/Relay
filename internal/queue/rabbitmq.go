@@ -2,8 +2,9 @@ package queue
 
 import (
 	"context"
-	"log"
-	"time"
+	"encoding/json"
+	"fmt"
+	"log/slog"
 
 	"github.com/gautamsardana/relay/internal/config"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -48,29 +49,29 @@ func New(config *config.Config) (*QueueManager, error){
 	return queueManager, nil
 }
 
-func (q *QueueManager) PublishStep(config *config.Config, event StepEvent) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	body := "Hello World!"
-	err := q.Channel.PublishWithContext(ctx,
-	"",     // exchange
-	q.Queue.Name, // routing key
-	false,  // mandatory
-	false,  // immediate
-	amqp.Publishing {
-		ContentType: "text/plain",
-		Body:        []byte(body),
-	})
-
+func (q *QueueManager) PublishStep(ctx context.Context, event StepEvent) error {
+	body, err := json.Marshal(event)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal step event: %w", err)
 	}
-	log.Printf(" [x] Sent %s\n", body)
 
+	err = q.Channel.PublishWithContext(ctx,
+		"",           // exchange
+		q.Queue.Name, // routing key
+		false,        // mandatory
+		false,        // immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		})
+	if err != nil {
+		return fmt.Errorf("failed to publish step event: %w", err)
+	}
+
+	slog.Info("step event published", "workflow_id", event.WorkflowID, "step_id", event.StepID)
 	return nil
 }
 
-func (q *QueueManager) ConsumeSteps(ch *amqp.Channel, handler func(StepEvent) error) error {
+func (q *QueueManager) ConsumeSteps(ctx context.Context, ch *amqp.Channel, handler func(StepEvent) error) error {
 	return nil
 }

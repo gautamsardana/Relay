@@ -15,15 +15,15 @@ type Registry struct {
 }
 
 func NewRegistry() *Registry {
-	return nil 
+	return &Registry{}
 }
+
 func (r *Registry) Register(t Tool) {}
 
 func (r *Registry) Get(name string) (Tool, bool){
 	return nil, false
 }
 
-// used to build the Claude prompt
 func (r *Registry) All() []Tool {
 	return nil
 }   
