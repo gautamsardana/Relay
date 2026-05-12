@@ -9,11 +9,11 @@ import (
 )
 
 // toModelWorkflow converts a sqlc-generated Workflow to a models.Workflow
-func toModelWorkflow(sw *sqlc.Workflow) *models.Workflow {
+func toModelWorkflow(sw *sqlc.Workflow) models.Workflow {
 	if sw == nil {
-		return nil
+		return models.Workflow{}
 	}
-	return &models.Workflow{
+	return models.Workflow{
 		WorkflowID: sw.WorkflowID,
 		Request:    sw.Request,
 		Status:     models.WorkflowStatus(sw.Status),
@@ -23,9 +23,9 @@ func toModelWorkflow(sw *sqlc.Workflow) *models.Workflow {
 }
 
 // toModelStep converts a sqlc-generated Step to a models.Step
-func toModelStep(ss *sqlc.Step) *models.Step {
+func toModelStep(ss *sqlc.Step) models.Step {
 	if ss == nil {
-		return nil
+		return models.Step{}
 	}
 
 	// Unmarshal JSONB fields from json.RawMessage
@@ -37,7 +37,7 @@ func toModelStep(ss *sqlc.Step) *models.Step {
 		_ = json.Unmarshal(ss.Output, &output)
 	}
 
-	return &models.Step{
+	return models.Step{
 		StepID:      ss.StepID,
 		WorkflowID:  ss.WorkflowID,
 		StepNumber:  int(ss.StepNumber),
@@ -61,10 +61,10 @@ func fromModelWorkflowCreate(mw *models.Workflow) sqlc.CreateWorkflowParams {
     }
 }
 
-func fromModelWorkflowUpdateStatus(mw *models.Workflow) sqlc.UpdateWorkflowStatusParams {
+func fromModelWorkflowUpdateStatus(workflowID string, status models.WorkflowStatus) sqlc.UpdateWorkflowStatusParams {
     return sqlc.UpdateWorkflowStatusParams{
-        WorkflowID: mw.WorkflowID,
-        Status:     mw.Status,
+        WorkflowID: workflowID,
+        Status:     status,
     }
 }
 
@@ -86,9 +86,9 @@ func fromModelStepCreate(ms *models.Step) sqlc.CreateStepParams {
     }
 }
 
-func fromModelStepUpdateStatus(ms *models.Step) sqlc.UpdateStepStatusParams {
+func fromModelStepUpdateStatus(stepID string, status models.StepStatus) sqlc.UpdateStepStatusParams {
     return sqlc.UpdateStepStatusParams{
-        StepID: ms.StepID,
-        Status: ms.Status,
+        StepID: stepID,
+        Status: status,
     }
 }

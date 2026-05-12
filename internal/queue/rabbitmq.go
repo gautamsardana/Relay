@@ -72,6 +72,41 @@ func (q *QueueManager) PublishStep(ctx context.Context, event StepEvent) error {
 	return nil
 }
 
-func (q *QueueManager) ConsumeSteps(ctx context.Context, ch *amqp.Channel, handler func(StepEvent) error) error {
-	return nil
+func (q *QueueManager) ConsumeSteps(handler func(StepEvent) error) error {
+	// ch, err := q.Conn.Channel()
+    // if err != nil {
+    //     return fmt.Errorf("failed to create channel: %w", err)
+    // }
+    // defer ch.Close()
+
+    msgs, err := q.Channel.Consume(
+        q.Queue.Name,
+        "",    // consumer tag
+        false, // auto-ack — important: we manually ack after processing
+        false, // exclusive
+        false, // no-local
+        false, // no-wait
+        nil,
+    )
+    if err != nil {
+        return fmt.Errorf("failed to start consuming: %w", err)
+    }
+
+    for msg := range msgs {
+        var event StepEvent
+        if err := json.Unmarshal(msg.Body, &event); err != nil {
+            slog.Error("failed to unmarshal step event", "error", err)
+            msg.Nack(false, false) // discard malformed message
+            continue
+        }
+
+        if err := handler(event); err != nil {
+            slog.Error("failed to handle step event", "error", err, "step_id", event.StepID)
+            msg.Nack(false, true) // requeue on failure
+            continue
+        }
+
+        msg.Ack(false)
+    }
+    return nil
 }

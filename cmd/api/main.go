@@ -47,25 +47,3 @@ func failOnError(err error, msg string) {
     log.Fatalf("%s: %s", msg, err)
   }
 }
-
-/*
-func main() {
-    cfg := config.Load()
-
-    db := store.NewPostgresStore(cfg.DBURL)
-
-    claudeAgent := agent.NewClaudeAgent(cfg.ClaudeAPIKey)
-
-    rabbit := queue.NewPublisher(cfg.RabbitURL)
-
-    planner := planner.NewPlanner(
-        db,
-        claudeAgent,
-        rabbit,
-    )
-
-    server := api.NewServer(planner)
-
-    server.Start()
-}
-*/

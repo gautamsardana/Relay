@@ -22,6 +22,7 @@ type Env struct {
 type App struct {
 	AIPrimary string
 	AISecondary string
+	WorkerCount int
 }
 
 func LoadConfig() (*Config, error){
@@ -74,5 +75,7 @@ func LoadAppConfig(config *Config) error {
 
 	config.App.AIPrimary = viper.GetString("ai_primary")
 	config.App.AISecondary = viper.GetString("ai_secondary")
+	config.App.WorkerCount = viper.GetInt("worker_count")
+	
 	return nil
 }

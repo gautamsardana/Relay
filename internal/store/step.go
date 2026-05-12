@@ -25,3 +25,15 @@ func (s *Store) InsertSteps(ctx context.Context, ms []models.Step) error {
 
     return tx.Commit()
 }
+func (s *Store) GetStepByID(ctx context.Context, stepID string) (models.Step, error) {
+	step, err := s.queries.GetStepById(ctx, stepID)
+	if err != nil {
+		return models.Step{}, err
+	}
+	return toModelStep(&step), nil
+}
+
+func (s *Store) UpdateStepStatus(ctx context.Context, stepID string, newStatus models.StepStatus) error {
+	err := s.queries.UpdateStepStatus(ctx, fromModelStepUpdateStatus(stepID, newStatus))
+    return err
+}
