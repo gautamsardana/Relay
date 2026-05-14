@@ -26,17 +26,19 @@ func main() {
 	failOnError(err, "Failed to connect to DB")
 	defer store.Conn.Close()
 	
-	q, err := queue.New(config)
+	conn, err := queue.Dial(config)
 	failOnError(err, "Failed to connect to queue")
-	defer q.Conn.Close()
-	defer q.Channel.Close()
+	defer conn.Close()
+
+	plannerQueue, err := queue.New(conn)
+	failOnError(err, "Failed to create planner queue")
 
 	agent, err := agent.NewAgentManager(config)
 	failOnError(err, "Failed to connect to agents")
 
 	// 4. initialize tools
 
-	planner := planner.New(store, q, agent, nil)
+	planner := planner.New(store, plannerQueue, agent, nil)
 
 	server := api.New(planner)
 	server.ListenAndServe()

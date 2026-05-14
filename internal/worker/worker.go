@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
+
 	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/models"
 	"github.com/gautamsardana/relay/internal/queue"
@@ -14,26 +16,33 @@ import (
 
 type Worker struct {
     store    *store.Store
-	queue    *queue.QueueManager
+	queue    *amqp.Connection
 	count 	 int
 }
 
-func New(conf *config.Config, s *store.Store, q *queue.QueueManager) *Worker {
-	return &Worker {
+func New(conf *config.Config, s *store.Store, conn *amqp.Connection) *Worker {
+	worker := &Worker {
 		store: s,
-		queue: q,
+		queue: conn,
 		count: conf.App.WorkerCount,
 	}
+	return worker
 }
 
 func (w *Worker) SpawnWorkers() {
     for i := range w.count {
-        go func(id int) {
+		qm, err := queue.New(w.queue)
+		if err != nil {
+			slog.Error("failed to create worker queue manager", "worker_id", i, "error", err)
+			continue
+    	}
+		
+        go func(id int, qm *queue.QueueManager) {
             slog.Info("worker started", "worker_id", id)
-            if err := w.queue.ConsumeSteps(w.HandleStep); err != nil {
+            if err := qm.ConsumeSteps(i, w.HandleStep); err != nil {
                 slog.Error("worker stopped", "worker_id", id, "error", err)
             }
-        }(i)
+        }(i, qm)
     }
 }
 
@@ -54,8 +63,6 @@ func (w *Worker) HandleStep(event queue.StepEvent) error {
     if err != nil {
         return fmt.Errorf("failed to update step status: %w", err)
     }
-
-	slog.Info("handling step", "workflow_id", event.WorkflowID, "step_id", event.StepID, "reached------")
 
     // 3. execute tool (coming later)
 

@@ -24,14 +24,14 @@ func main(){
 	failOnError(err, "Failed to connect to DB")
 	defer store.Conn.Close()
 	
-	q, err := queue.New(config)
+	conn, err := queue.Dial(config)
 	failOnError(err, "Failed to connect to queue")
-	defer q.Conn.Close()
-	defer q.Channel.Close()
+	defer conn.Close()
 
-	slog.Info("oitt")
-	worker := worker.New(config, store, q)
+	worker := worker.New(config, store, conn)
 	worker.SpawnWorkers()
+
+	select{}
 }
 
 func failOnError(err error, msg string) {

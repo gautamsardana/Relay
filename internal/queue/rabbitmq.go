@@ -15,38 +15,35 @@ type StepEvent struct {
     StepID     string `json:"step_id"`
 }
 
-func New(config *config.Config) (*QueueManager, error){
-	conn, err := amqp.Dial(config.Env.QueueURL)
-	if err != nil {
-		return nil, err
-	}
+func Dial(config *config.Config) (*amqp.Connection, error) {
+    return amqp.Dial(config.Env.QueueURL)
+}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
+func New(conn *amqp.Connection) (*QueueManager, error) {
+    ch, err := conn.Channel()
+    if err != nil {
+        return nil, err
+    }
 
-	q, err := ch.QueueDeclare(
-		"steps1", // name
-		true,    // durability
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		amqp.Table{
-			amqp.QueueTypeArg: amqp.QueueTypeQuorum,
-		},
-	)
-	
-	if err != nil {
-		return nil, err
-	}
-	
-	queueManager := &QueueManager{
-		Conn: conn,
-		Channel: ch,
-		Queue: q,
-	}
-	return queueManager, nil
+    q, err := ch.QueueDeclare(
+        "steps1",
+        true,
+        false,
+        false,
+        false,
+        amqp.Table{
+            amqp.QueueTypeArg: amqp.QueueTypeQuorum,
+        },
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    return &QueueManager{
+        Conn:    conn,
+        Channel: ch,
+        Queue:   q,
+    }, nil
 }
 
 func (q *QueueManager) PublishStep(ctx context.Context, event StepEvent) error {
@@ -72,13 +69,7 @@ func (q *QueueManager) PublishStep(ctx context.Context, event StepEvent) error {
 	return nil
 }
 
-func (q *QueueManager) ConsumeSteps(handler func(StepEvent) error) error {
-	// ch, err := q.Conn.Channel()
-    // if err != nil {
-    //     return fmt.Errorf("failed to create channel: %w", err)
-    // }
-    // defer ch.Close()
-
+func (q *QueueManager) ConsumeSteps(i int, handler func(StepEvent) error) error {
     msgs, err := q.Channel.Consume(
         q.Queue.Name,
         "",    // consumer tag
