@@ -17,6 +17,9 @@ type Env struct {
 
 	GPTApiKey string
 	ClaudeApiKey string
+	GroqApiKey string
+
+	TavilyApiKey string
 }
 
 type App struct {
@@ -55,7 +58,10 @@ func LoadEnv(config *Config) error {
 		QueueURL: viper.GetString("QUEUE_URL"),
 
 		GPTApiKey: viper.GetString("GPT_API_KEY"),
-		ClaudeApiKey: viper.GetString("Claude_API_KEY"),
+		ClaudeApiKey: viper.GetString("CLAUDE_API_KEY"),
+		GroqApiKey: viper.GetString("GROQ_API_Key"),
+
+		TavilyApiKey: viper.GetString("TAVILY_API_KEY"),
 	}
 
 	if config.Env.DatabaseURL == "" {

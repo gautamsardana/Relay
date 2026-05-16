@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"time"
@@ -16,16 +17,20 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 	defer cancel()
 
 	// 1. generate plan
+	slog.Info("generating plan for ", "workflowID: ", request.WorkflowID)
 	steps, err := p.agent.GeneratePlan(ctx, request.Request, p.registry.All())
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
+		return
 	}
 
 	// 2. validate all tools are in registry
+	slog.Info("validating tools for ", "workflowID: ", request.WorkflowID)
 	for _, step := range steps {
 		_, toolExists := p.registry.Get(step.Tool)
 		if !toolExists {
-			p.failWorkflow(ctx, request, err)
+			p.failWorkflow(ctx, request, fmt.Errorf("invalid tool used in steps: %s", step.Tool))
+			return
 		}
 	}
 
@@ -50,12 +55,14 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 	err = p.store.InsertSteps(ctx, modelSteps)
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
+		return
 	}
 
 	// 4. mark workflow as 'processing'
 	err = p.store.UpdateWorkflowStatus(ctx, request.WorkflowID, models.WorkflowStatusProcessing)
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
+		return
 	}
 
 	// 5. publish first step
@@ -67,6 +74,7 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 	err = p.queue.PublishStep(ctx, queue.StepEvent{WorkflowID: request.WorkflowID, StepID: firstStepID})
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
+		return
 	}
 }
 

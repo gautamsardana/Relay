@@ -47,6 +47,8 @@ func (w *Worker) SpawnWorkers() {
 }
 
 func (w *Worker) HandleStep(event queue.StepEvent) error {
+	// check if already picked up by a different worker
+	
     ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Minute)
     defer cancel()
 

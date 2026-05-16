@@ -41,6 +41,8 @@ func newAgent(config *config.Config, provider string) (Agent, error) {
         return NewClaude(config)
     case "openai":
         return NewGPT(config)
+    case "groq":
+        return NewGroq(config)
     default:
         // log.Fatalf("unsupported AI provider: %s", provider)
         // return nil

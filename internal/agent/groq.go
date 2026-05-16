@@ -4,24 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/sashabaranov/go-openai"
 
 	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/tools"
-	"github.com/sashabaranov/go-openai"
 )
 
-type GPT struct {
+type Groq struct {
 	Client *openai.Client
+    Model string
 }
 
-func NewGPT(config *config.Config) (*GPT, error){
-	if config.Env.GPTApiKey == "" {
-		return nil, fmt.Errorf("Missing GPT API KEY")
-	} 
-	return &GPT{Client: openai.NewClient(config.Env.GPTApiKey)}, nil
+func NewGroq(config *config.Config) (*Groq, error) {
+    if config.Env.GroqApiKey == "" {
+        return nil, fmt.Errorf("missing Groq API key")
+    }
+    
+    groqConfig := openai.DefaultConfig(config.Env.GroqApiKey)
+    groqConfig.BaseURL = "https://api.groq.com/openai/v1"
+    
+    return &Groq{
+        Client: openai.NewClientWithConfig(groqConfig),
+        Model:  "llama-3.3-70b-versatile",
+    }, nil
 }
 
-func (gpt *GPT) GeneratePlan(ctx context.Context, request string, currTools []tools.Tool) ([]StepPlan, error) {
+func (groq *Groq) GeneratePlan(ctx context.Context, request string, currTools []tools.Tool) ([]StepPlan, error) {
     toolDescriptions := tools.BuildToolDescriptions(currTools)
 
     prompt := fmt.Sprintf(`You are a workflow planning assistant. Given a goal and a list of available tools, generate a step-by-step execution plan.
@@ -41,14 +51,16 @@ func (gpt *GPT) GeneratePlan(ctx context.Context, request string, currTools []to
 
 	For steps that depend on previous step outputs, use template syntax: {{steps[N].output.FIELD}} where N is the step_number.
 
+    You MUST only use tools from the list above. Do not invent tool names. If you cannot complete the goal with the available tools, return an empty array.
+
 	Example output:
 	[
 	{"step_number": 1, "tool": "web_search", "description": "Search for software engineering jobs", "input": {"query": "latest software engineering jobs US 2026"}},
 	{"step_number": 2, "tool": "notion_write", "description": "Post results to Notion", "input": {"content": "{{steps[1].output.results}}"}}
 	]`, toolDescriptions, request)
 
-    resp, err := gpt.Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-        Model: openai.GPT4o,
+    resp, err := groq.Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+        Model: groq.Model,
         Messages: []openai.ChatCompletionMessage{
             {
                 Role:    openai.ChatMessageRoleSystem,
@@ -63,11 +75,10 @@ func (gpt *GPT) GeneratePlan(ctx context.Context, request string, currTools []to
     },
     )
     if err != nil {
-        return nil, fmt.Errorf("GPT completion error: %w", err)
+        return nil, fmt.Errorf("Groq completion error: %w", err)
     }
 
-    content := resp.Choices[0].Message.Content
-	fmt.Print(resp, "\n\n", content)
+    content := strings.TrimSpace(resp.Choices[0].Message.Content)
     
     var steps []StepPlan
     if err := json.Unmarshal([]byte(content), &steps); err != nil {

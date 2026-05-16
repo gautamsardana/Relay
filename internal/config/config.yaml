@@ -1,3 +1,3 @@
-# ai_primary: "openai"
-# ai_secondary: "anthropic"
+ai_primary: "groq"
+ai_secondary: "openai"
 worker_count: 5
