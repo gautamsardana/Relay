@@ -15,6 +15,7 @@ type Workflow struct {
 	WorkflowID string
 	Request    string
 	Status     WorkflowStatus
+	Error 	   string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }

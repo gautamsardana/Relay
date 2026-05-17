@@ -61,10 +61,11 @@ func fromModelWorkflowCreate(mw *models.Workflow) sqlc.CreateWorkflowParams {
     }
 }
 
-func fromModelWorkflowUpdateStatus(workflowID string, status models.WorkflowStatus) sqlc.UpdateWorkflowStatusParams {
+func fromModelWorkflowUpdateStatus(workflowID string, status models.WorkflowStatus, errMsg string) sqlc.UpdateWorkflowStatusParams {
     return sqlc.UpdateWorkflowStatusParams{
         WorkflowID: workflowID,
         Status:     status,
+		Error:      sql.NullString{String: errMsg, Valid: errMsg != ""},
     }
 }
 

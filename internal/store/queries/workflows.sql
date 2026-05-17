@@ -17,5 +17,5 @@ LIMIT $1 OFFSET $2;
 
 -- name: UpdateWorkflowStatus :exec
 UPDATE workflows
-SET status = $2, updated_at = now()
+SET status = $2, error = $3, updated_at = now()
 WHERE workflow_id = $1;

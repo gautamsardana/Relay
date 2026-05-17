@@ -2,7 +2,6 @@ package store
 
 import (
 	"database/sql"
-
 	_ "github.com/lib/pq"
 
 	"github.com/gautamsardana/relay/internal/config"

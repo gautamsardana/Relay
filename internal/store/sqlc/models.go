@@ -121,6 +121,7 @@ type Workflow struct {
 	WorkflowID string                `json:"workflow_id"`
 	Request    string                `json:"request"`
 	Status     models.WorkflowStatus `json:"status"`
+	Error      sql.NullString        `json:"error"`
 	CreatedAt  time.Time             `json:"created_at"`
 	UpdatedAt  time.Time             `json:"updated_at"`
 }

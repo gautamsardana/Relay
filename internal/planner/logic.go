@@ -59,7 +59,7 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 	}
 
 	// 4. mark workflow as 'processing'
-	err = p.store.UpdateWorkflowStatus(ctx, request.WorkflowID, models.WorkflowStatusProcessing)
+	err = p.store.UpdateWorkflowStatus(ctx, request.WorkflowID, models.WorkflowStatusProcessing, "")
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
 		return
@@ -79,6 +79,6 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 }
 
 func (p *Planner) failWorkflow(ctx context.Context, workflow *models.Workflow, err error) {
-    p.store.UpdateWorkflowStatus(ctx, workflow.WorkflowID, models.WorkflowStatusFailed)
+    p.store.UpdateWorkflowStatus(ctx, workflow.WorkflowID, models.WorkflowStatusFailed, err.Error())
     slog.Error("workflow failed", "workflow_id", workflow.WorkflowID, "error", err)
 }

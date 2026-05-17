@@ -5,6 +5,7 @@ CREATE TABLE workflows (
     workflow_id  UUID PRIMARY KEY,
     request      TEXT NOT NULL,
     status       workflow_status NOT NULL DEFAULT 'init',
+    error        Text,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -14,7 +14,7 @@ func (s *Store) CreateWorkflow(ctx context.Context, mw *models.Workflow) error {
     return nil
 }
 
-func (s *Store) UpdateWorkflowStatus(ctx context.Context, workflowID string, newStatus models.WorkflowStatus) error {
-    err := s.queries.UpdateWorkflowStatus(ctx, fromModelWorkflowUpdateStatus(workflowID, newStatus))
+func (s *Store) UpdateWorkflowStatus(ctx context.Context, workflowID string, newStatus models.WorkflowStatus, errMsg string) error {
+    err := s.queries.UpdateWorkflowStatus(ctx, fromModelWorkflowUpdateStatus(workflowID, newStatus, errMsg))
     return err
 }

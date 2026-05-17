@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	models "github.com/gautamsardana/relay/internal/models"
 )
@@ -23,10 +25,18 @@ type CreateWorkflowParams struct {
 	Status     models.WorkflowStatus `json:"status"`
 }
 
+type CreateWorkflowRow struct {
+	WorkflowID string                `json:"workflow_id"`
+	Request    string                `json:"request"`
+	Status     models.WorkflowStatus `json:"status"`
+	CreatedAt  time.Time             `json:"created_at"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+}
+
 // Active: 1777597968626@@127.0.0.1@5432@postgres
-func (q *Queries) CreateWorkflow(ctx context.Context, arg CreateWorkflowParams) (Workflow, error) {
+func (q *Queries) CreateWorkflow(ctx context.Context, arg CreateWorkflowParams) (CreateWorkflowRow, error) {
 	row := q.db.QueryRowContext(ctx, createWorkflow, arg.WorkflowID, arg.Request, arg.Status)
-	var i Workflow
+	var i CreateWorkflowRow
 	err := row.Scan(
 		&i.WorkflowID,
 		&i.Request,
@@ -43,9 +53,17 @@ FROM workflows
 WHERE workflow_id = $1
 `
 
-func (q *Queries) GetWorkflowById(ctx context.Context, workflowID string) (Workflow, error) {
+type GetWorkflowByIdRow struct {
+	WorkflowID string                `json:"workflow_id"`
+	Request    string                `json:"request"`
+	Status     models.WorkflowStatus `json:"status"`
+	CreatedAt  time.Time             `json:"created_at"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+}
+
+func (q *Queries) GetWorkflowById(ctx context.Context, workflowID string) (GetWorkflowByIdRow, error) {
 	row := q.db.QueryRowContext(ctx, getWorkflowById, workflowID)
-	var i Workflow
+	var i GetWorkflowByIdRow
 	err := row.Scan(
 		&i.WorkflowID,
 		&i.Request,
@@ -68,15 +86,23 @@ type ListWorkflowsParams struct {
 	Offset int32 `json:"offset"`
 }
 
-func (q *Queries) ListWorkflows(ctx context.Context, arg ListWorkflowsParams) ([]Workflow, error) {
+type ListWorkflowsRow struct {
+	WorkflowID string                `json:"workflow_id"`
+	Request    string                `json:"request"`
+	Status     models.WorkflowStatus `json:"status"`
+	CreatedAt  time.Time             `json:"created_at"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+}
+
+func (q *Queries) ListWorkflows(ctx context.Context, arg ListWorkflowsParams) ([]ListWorkflowsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listWorkflows, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Workflow
+	var items []ListWorkflowsRow
 	for rows.Next() {
-		var i Workflow
+		var i ListWorkflowsRow
 		if err := rows.Scan(
 			&i.WorkflowID,
 			&i.Request,
@@ -99,16 +125,17 @@ func (q *Queries) ListWorkflows(ctx context.Context, arg ListWorkflowsParams) ([
 
 const updateWorkflowStatus = `-- name: UpdateWorkflowStatus :exec
 UPDATE workflows
-SET status = $2, updated_at = now()
+SET status = $2, error = $3, updated_at = now()
 WHERE workflow_id = $1
 `
 
 type UpdateWorkflowStatusParams struct {
 	WorkflowID string                `json:"workflow_id"`
 	Status     models.WorkflowStatus `json:"status"`
+	Error      sql.NullString        `json:"error"`
 }
 
 func (q *Queries) UpdateWorkflowStatus(ctx context.Context, arg UpdateWorkflowStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateWorkflowStatus, arg.WorkflowID, arg.Status)
+	_, err := q.db.ExecContext(ctx, updateWorkflowStatus, arg.WorkflowID, arg.Status, arg.Error)
 	return err
 }
