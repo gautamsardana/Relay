@@ -33,7 +33,7 @@ func (s *Store) GetStepByID(ctx context.Context, stepID string) (models.Step, er
 	return toModelStep(&step), nil
 }
 
-func (s *Store) UpdateStepStatus(ctx context.Context, stepID string, newStatus models.StepStatus) error {
-	err := s.queries.UpdateStepStatus(ctx, fromModelStepUpdateStatus(stepID, newStatus))
+func (s *Store) UpdateStepStatus(ctx context.Context, stepID string, newStatus models.StepStatus, errMsg string) error {
+	err := s.queries.UpdateStepStatus(ctx, fromModelStepUpdateStatus(stepID, newStatus, errMsg))
     return err
 }

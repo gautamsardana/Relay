@@ -11,6 +11,7 @@ import (
 	"github.com/gautamsardana/relay/internal/planner"
 	"github.com/gautamsardana/relay/internal/queue"
 	"github.com/gautamsardana/relay/internal/store"
+	"github.com/gautamsardana/relay/internal/tools"
 )
 
 func main() {
@@ -36,9 +37,10 @@ func main() {
 	agent, err := agent.NewAgentManager(config)
 	failOnError(err, "Failed to connect to agents")
 
-	// 4. initialize tools
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewWebSearch(config))
 
-	planner := planner.New(store, plannerQueue, agent, nil)
+	planner := planner.New(store, plannerQueue, agent, registry)
 
 	server := api.New(planner)
 	server.ListenAndServe()

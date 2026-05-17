@@ -16,16 +16,14 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Minute)
 	defer cancel()
 
-	// 1. generate plan
-	slog.Info("generating plan for ", "workflowID: ", request.WorkflowID)
+	slog.Info("generating plan", "workflowID: ", request.WorkflowID)
 	steps, err := p.agent.GeneratePlan(ctx, request.Request, p.registry.All())
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
 		return
 	}
 
-	// 2. validate all tools are in registry
-	slog.Info("validating tools for ", "workflowID: ", request.WorkflowID)
+	slog.Info("validating tools", "workflowID: ", request.WorkflowID)
 	for _, step := range steps {
 		_, toolExists := p.registry.Get(step.Tool)
 		if !toolExists {
@@ -34,7 +32,7 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 		}
 	}
 
-	// 3. insert steps
+	slog.Info("writing steps to store", "workflowID: ", request.WorkflowID)
 	modelSteps := make([]models.Step, len(steps))
 
 	for i, step := range steps {
@@ -58,14 +56,14 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 		return
 	}
 
-	// 4. mark workflow as 'processing'
+	slog.Info("marking workflow as processing", "workflowID: ", request.WorkflowID)
 	err = p.store.UpdateWorkflowStatus(ctx, request.WorkflowID, models.WorkflowStatusProcessing, "")
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
 		return
 	}
 
-	// 5. publish first step
+	slog.Info("publishing first step", "workflowID: ", request.WorkflowID)
 	sort.Slice(modelSteps, func(i, j int) bool {
 		return modelSteps[i].StepNumber < modelSteps[j].StepNumber
 	})

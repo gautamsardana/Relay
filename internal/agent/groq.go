@@ -33,6 +33,7 @@ func NewGroq(config *config.Config) (*Groq, error) {
 
 func (groq *Groq) GeneratePlan(ctx context.Context, request string, currTools []tools.Tool) ([]StepPlan, error) {
     toolDescriptions := tools.BuildToolDescriptions(currTools)
+    fmt.Println(toolDescriptions)
 
     prompt := fmt.Sprintf(`You are a workflow planning assistant. Given a goal and a list of available tools, generate a step-by-step execution plan.
 

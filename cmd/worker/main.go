@@ -8,6 +8,7 @@ import (
 	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/queue"
 	"github.com/gautamsardana/relay/internal/store"
+	"github.com/gautamsardana/relay/internal/tools"
 	"github.com/gautamsardana/relay/internal/worker"
 )
 
@@ -28,7 +29,10 @@ func main(){
 	failOnError(err, "Failed to connect to queue")
 	defer conn.Close()
 
-	worker := worker.New(config, store, conn)
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewWebSearch(config))
+
+	worker := worker.New(config, store, conn, registry)
 	worker.SpawnWorkers()
 
 	select{}

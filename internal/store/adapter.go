@@ -87,9 +87,10 @@ func fromModelStepCreate(ms *models.Step) sqlc.CreateStepParams {
     }
 }
 
-func fromModelStepUpdateStatus(stepID string, status models.StepStatus) sqlc.UpdateStepStatusParams {
+func fromModelStepUpdateStatus(stepID string, status models.StepStatus, errMsg string) sqlc.UpdateStepStatusParams {
     return sqlc.UpdateStepStatusParams{
         StepID: stepID,
         Status: status,
+		Error:      sql.NullString{String: errMsg, Valid: errMsg != ""},
     }
 }

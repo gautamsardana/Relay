@@ -134,16 +134,17 @@ func (q *Queries) ListStepsByWorkflow(ctx context.Context, workflowID string) ([
 
 const updateStepStatus = `-- name: UpdateStepStatus :exec
 UPDATE steps
-SET status = $2, updated_at = now()
+SET status = $2, error = $3, updated_at = now()
 WHERE step_id = $1
 `
 
 type UpdateStepStatusParams struct {
 	StepID string            `json:"step_id"`
 	Status models.StepStatus `json:"status"`
+	Error  sql.NullString    `json:"error"`
 }
 
 func (q *Queries) UpdateStepStatus(ctx context.Context, arg UpdateStepStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateStepStatus, arg.StepID, arg.Status)
+	_, err := q.db.ExecContext(ctx, updateStepStatus, arg.StepID, arg.Status, arg.Error)
 	return err
 }

@@ -16,5 +16,5 @@ ORDER BY step_number ASC;
 
 -- name: UpdateStepStatus :exec
 UPDATE steps
-SET status = $2, updated_at = now()
+SET status = $2, error = $3, updated_at = now()
 WHERE step_id = $1;

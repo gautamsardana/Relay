@@ -20,18 +20,34 @@ func NewRegistry() *Registry {
 	return &Registry{}
 }
 
-func (r *Registry) Register(t Tool) {}
+func (r *Registry) Register(t Tool) {
+	r.tools = make(map[string]Tool)
+	r.tools[t.Name()] = t
+}
 
 func (r *Registry) Get(name string) (Tool, bool){
+	for _, tool := range r.tools {
+		if tool.Name() == name {
+			return tool, true
+		}
+	}
 	return nil, false
 }
 
 func (r *Registry) All() []Tool {
-	return nil
+	var tools []Tool
+	for _, tool := range r.tools {
+		tools = append(tools, tool)
+	}
+	return tools
 }   
 
 func (r *Registry) Names() []string {
-	return nil
+	var names []string
+	for _, tool := range r.tools {
+		names = append(names, tool.Name())
+	}
+	return names
 }
 
 func BuildToolDescriptions(tools []Tool) string {
