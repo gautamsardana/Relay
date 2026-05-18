@@ -63,6 +63,30 @@ func (q *Queries) CreateStep(ctx context.Context, arg CreateStepParams) (Step, e
 	return i, err
 }
 
+const getNextStep = `-- name: GetNextStep :one
+SELECT step_id, workflow_id
+FROM steps
+WHERE workflow_id = $1 AND step_number = $2 AND status = 'pending'
+LIMIT 1
+`
+
+type GetNextStepParams struct {
+	WorkflowID string `json:"workflow_id"`
+	StepNumber int32  `json:"step_number"`
+}
+
+type GetNextStepRow struct {
+	StepID     string `json:"step_id"`
+	WorkflowID string `json:"workflow_id"`
+}
+
+func (q *Queries) GetNextStep(ctx context.Context, arg GetNextStepParams) (GetNextStepRow, error) {
+	row := q.db.QueryRowContext(ctx, getNextStep, arg.WorkflowID, arg.StepNumber)
+	var i GetNextStepRow
+	err := row.Scan(&i.StepID, &i.WorkflowID)
+	return i, err
+}
+
 const getStepById = `-- name: GetStepById :one
 SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
 FROM steps
@@ -130,6 +154,23 @@ func (q *Queries) ListStepsByWorkflow(ctx context.Context, workflowID string) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateStepAsCompleted = `-- name: UpdateStepAsCompleted :exec
+UPDATE steps
+SET status = $2, output = $3, updated_at = now()
+WHERE step_id = $1
+`
+
+type UpdateStepAsCompletedParams struct {
+	StepID string            `json:"step_id"`
+	Status models.StepStatus `json:"status"`
+	Output json.RawMessage   `json:"output"`
+}
+
+func (q *Queries) UpdateStepAsCompleted(ctx context.Context, arg UpdateStepAsCompletedParams) error {
+	_, err := q.db.ExecContext(ctx, updateStepAsCompleted, arg.StepID, arg.Status, arg.Output)
+	return err
 }
 
 const updateStepStatus = `-- name: UpdateStepStatus :exec

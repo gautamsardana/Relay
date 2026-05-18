@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/gautamsardana/relay/internal/models"
@@ -36,4 +37,20 @@ func (s *Store) GetStepByID(ctx context.Context, stepID string) (models.Step, er
 func (s *Store) UpdateStepStatus(ctx context.Context, stepID string, newStatus models.StepStatus, errMsg string) error {
 	err := s.queries.UpdateStepStatus(ctx, fromModelStepUpdateStatus(stepID, newStatus, errMsg))
     return err
+}
+
+func (s *Store) UpdateStepAsCompleted(ctx context.Context, stepID string, output map[string]any) error {
+	err := s.queries.UpdateStepAsCompleted(ctx, fromModelStepUpdateAsCompleted(stepID, output))
+    return err
+}
+
+func (s *Store) GetNextStep(ctx context.Context, workflowID string, stepNumber int32) (models.Step, bool, error) {
+    nextStep, err := s.queries.GetNextStep(ctx, fromModelStepGetNextStep(workflowID, stepNumber))
+    if err == sql.ErrNoRows {
+        return models.Step{}, false, nil // no next step, workflow done
+    }
+    if err != nil {
+        return models.Step{}, false, err
+    }
+    return models.Step{WorkflowID: nextStep.WorkflowID, StepID: nextStep.StepID}, true, nil
 }

@@ -94,3 +94,20 @@ func fromModelStepUpdateStatus(stepID string, status models.StepStatus, errMsg s
 		Error:      sql.NullString{String: errMsg, Valid: errMsg != ""},
     }
 }
+
+func fromModelStepUpdateAsCompleted(stepID string, output map[string]any) sqlc.UpdateStepAsCompletedParams {
+	outputBytes, _ := json.Marshal(output)
+
+    return sqlc.UpdateStepAsCompletedParams{
+        StepID: stepID,
+        Status: models.StepStatusSuccess,
+		Output: outputBytes,
+    }
+}
+
+func fromModelStepGetNextStep(workflowID string, stepNumber int32) sqlc.GetNextStepParams {
+	return sqlc.GetNextStepParams{
+		WorkflowID: workflowID,
+		StepNumber: stepNumber,
+	}
+}

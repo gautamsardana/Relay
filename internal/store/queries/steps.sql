@@ -18,3 +18,14 @@ ORDER BY step_number ASC;
 UPDATE steps
 SET status = $2, error = $3, updated_at = now()
 WHERE step_id = $1;
+
+-- name: UpdateStepAsCompleted :exec
+UPDATE steps
+SET status = $2, output = $3, updated_at = now()
+WHERE step_id = $1;
+
+-- name: GetNextStep :one
+SELECT step_id, workflow_id
+FROM steps
+WHERE workflow_id = $1 AND step_number = $2 AND status = 'pending'
+LIMIT 1;

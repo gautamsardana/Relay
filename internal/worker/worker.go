@@ -34,22 +34,28 @@ func New(conf *config.Config, s *store.Store, conn *amqp.Connection, r *tools.Re
 
 func (w *Worker) SpawnWorkers() {
     for i := range w.count {
-		qm, err := queue.New(w.queue)
-		if err != nil {
-			slog.Error("failed to create worker queue manager", "worker_id", i, "error", err)
-			continue
-    	}
-		
-        go func(id int, qm *queue.QueueManager) {
-            slog.Info("worker started", "worker_id", id)
-            if err := qm.ConsumeSteps(i, w.HandleStep); err != nil {
-                slog.Error("worker stopped", "worker_id", id, "error", err)
+        go func(id int) {
+            for {
+                qm, err := queue.New(w.queue)
+                if err != nil {
+                    slog.Error("failed to create worker queue manager", "worker_id", id, "error", err)
+                    time.Sleep(5 * time.Second)
+                    continue
+                }
+                slog.Info("worker started", "worker_id", id)
+                err = qm.ConsumeSteps(func(event queue.StepEvent) error {
+                    return w.HandleStep(qm, event)
+                })
+                if err != nil {
+                    slog.Error("worker stopped, restarting", "worker_id", id, "error", err)
+                    time.Sleep(5 * time.Second)
+                }
             }
-        }(i, qm)
+        }(i)
     }
 }
 
-func (w *Worker) HandleStep(event queue.StepEvent) error {
+func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error {
 	// check if already picked up by a different worker
 
 	slog.Info("consumed a new request", "workflowID: ", event.WorkflowID)
@@ -81,12 +87,40 @@ func (w *Worker) HandleStep(event queue.StepEvent) error {
 		return err
 	}
 
-	fmt.Println(result)
+	slog.Info("updating step as completed", "workflow_id", step.WorkflowID, "step_id", step.StepID)
+    err = w.store.UpdateStepAsCompleted(ctx, step.StepID, result)
+    if err != nil {
+        return fmt.Errorf("failed to update step status: %w", err)
+    }
 	
-    // 4. mark step complete, publish next step
-	// 4.1 add CREATE INDEX idx_steps_workflow_step ON steps(workflow_id, step_number);
-	// 4.2 add a new query to find next step
-    return nil
+	slog.Info("looking for next step", "workflow_id", step.WorkflowID, "step_id", step.StepID)
+	nextStep, hasNext, err := w.store.GetNextStep(ctx, step.WorkflowID, int32(step.StepNumber)+1)
+	if err != nil {
+		slog.Error("failed to get next step", "workflow_id", step.WorkflowID, "error", err)
+		return fmt.Errorf("failed to get next step: %w", err)
+	}
+
+	if !hasNext {
+		// last step completed, mark workflow success
+		err = w.store.UpdateWorkflowStatus(ctx, step.WorkflowID, models.WorkflowStatusSuccess, "")
+		if err != nil {
+			return fmt.Errorf("failed to mark workflow success: %w", err)
+		}
+		slog.Info("workflow completed", "workflow_id", step.WorkflowID)
+		return nil
+	}
+
+	err = qm.PublishStep(ctx, queue.StepEvent{
+		WorkflowID: nextStep.WorkflowID,
+		StepID:     nextStep.StepID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to publish next step: %w", err)
+	}
+
+	slog.Info("next step published", "workflow_id", nextStep.WorkflowID, "step_id", nextStep.StepID, "step_number", nextStep.StepNumber)
+	return nil
+	// add CREATE INDEX idx_steps_workflow_step ON steps(workflow_id, step_number);
 }
 
 func (w *Worker) failStep(ctx context.Context, step *models.Step, err error) {

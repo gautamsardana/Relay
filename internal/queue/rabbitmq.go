@@ -69,7 +69,7 @@ func (q *QueueManager) PublishStep(ctx context.Context, event StepEvent) error {
 	return nil
 }
 
-func (q *QueueManager) ConsumeSteps(i int, handler func(StepEvent) error) error {
+func (q *QueueManager) ConsumeSteps(handler func(StepEvent) error) error {
     msgs, err := q.Channel.Consume(
         q.Queue.Name,
         "",    // consumer tag
