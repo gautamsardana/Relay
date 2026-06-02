@@ -58,7 +58,7 @@ func (w *Worker) SpawnWorkers() {
 func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error {
 	// check if already picked up by a different worker
 
-	slog.Info("consumed a new request", "workflowID: ", event.WorkflowID)
+	slog.Info("consumed a new request", "workflowID", event.WorkflowID, "stepID", event.StepID)
     ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Minute)
     defer cancel()
 
@@ -74,13 +74,15 @@ func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error
         return fmt.Errorf("failed to update step status: %w", err)
     }
 
-    slog.Info("executing", "workflow_id", step.WorkflowID, "step_id", step.StepID, "tool", step.Tool)
+    slog.Info("validating tool", "workflow_id", step.WorkflowID, "step_id", step.StepID, "tool", step.Tool)
+	fmt.Println(w.registry.Names())
 	tool, exists := w.registry.Get(step.Tool)
 	if !exists {
 		w.failStep(ctx, &step, fmt.Errorf("tool does not exist in the registry, tool: %s", step.Tool))
 		return fmt.Errorf("tool does not exist in the registry, tool: %s", step.Tool)
 	}
 	
+	slog.Info("executing step", "workflow_id", step.WorkflowID, "step_id", step.StepID, "tool", step.Tool)
 	result, err := tool.Execute(ctx, step.Input)
 	if err != nil {
 		w.failStep(ctx, &step, err)

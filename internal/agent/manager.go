@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	// "fmt"
 	"log"
 
@@ -44,9 +45,8 @@ func newAgent(config *config.Config, provider string) (Agent, error) {
     case "groq":
         return NewGroq(config)
     default:
-        // log.Fatalf("unsupported AI provider: %s", provider)
-        // return nil
-		return NewFAaaa()
+        log.Fatalf("unsupported AI provider: %s", provider)
+        return nil, fmt.Errorf("unsupported AI provider: %s", provider)
     }
 }
 

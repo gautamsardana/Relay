@@ -93,7 +93,7 @@ func (q *QueueManager) ConsumeSteps(handler func(StepEvent) error) error {
 
         if err := handler(event); err != nil {
             slog.Error("failed to handle step event", "error", err, "step_id", event.StepID)
-            msg.Nack(false, true) // requeue on failure
+            msg.Nack(false, false) // requeue on failure
             continue
         }
 

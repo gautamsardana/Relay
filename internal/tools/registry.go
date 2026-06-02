@@ -17,11 +17,10 @@ type Registry struct {
 }
 
 func NewRegistry() *Registry {
-	return &Registry{}
+	return &Registry{tools: map[string]Tool{}}
 }
 
 func (r *Registry) Register(t Tool) {
-	r.tools = make(map[string]Tool)
 	r.tools[t.Name()] = t
 }
 
