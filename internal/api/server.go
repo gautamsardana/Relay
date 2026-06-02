@@ -14,10 +14,10 @@ type Server struct {
 }
 
 func New(p *planner.Planner) *Server {
-    return &Server{planner: p}
+	return &Server{planner: p}
 }
 
-func (s *Server) ListenAndServe(){
+func (s *Server) ListenAndServe() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -25,7 +25,11 @@ func (s *Server) ListenAndServe(){
 	r.Post("/workflow", s.CreateWorkflow)
 	r.Get("/workflows", s.ListWorkflows)
 	r.Get("/workflows/{id}", s.GetWorkflow)
-	
+	r.Get("/ws/workflows/{id}", s.StreamWorkflowSteps)
+
+	// Serve static UI from /web at the root path.
+	r.Handle("/*", http.FileServer(http.Dir("./web")))
+
 	slog.Info("listening on port 8080...")
 	http.ListenAndServe(":8080", r)
 }

@@ -67,6 +67,10 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 	sort.Slice(modelSteps, func(i, j int) bool {
 		return modelSteps[i].StepNumber < modelSteps[j].StepNumber
 	})
+	if len(modelSteps) == 0 {
+		p.failWorkflow(ctx, request, fmt.Errorf("no steps defined for this workflow"))
+		return
+	}
 	firstStepID := modelSteps[0].StepID
 	
 	err = p.queue.PublishStep(ctx, queue.StepEvent{WorkflowID: request.WorkflowID, StepID: firstStepID})
@@ -79,4 +83,8 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 func (p *Planner) failWorkflow(ctx context.Context, workflow *models.Workflow, err error) {
     p.store.UpdateWorkflowStatus(ctx, workflow.WorkflowID, models.WorkflowStatusFailed, err.Error())
     slog.Error("workflow failed", "workflow_id", workflow.WorkflowID, "error", err)
+}
+
+func (p *Planner) GetStepsByWorkflow(ctx context.Context, workflowID string) ([]models.Step, error) {
+	return p.store.ListStepsByWorkflow(ctx, workflowID)
 }

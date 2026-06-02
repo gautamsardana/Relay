@@ -1,0 +1,139 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px 72px;
+}
+
+.header h1 {
+  font-size: 2.25rem;
+  margin-bottom: 8px;
+}
+
+.header p {
+  margin-top: 0;
+  color: #94a3b8;
+}
+
+.panel {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 16px;
+  padding: 24px;
+  margin-top: 20px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.35);
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+
+input,
+textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  background: #0b1120;
+  padding: 12px 14px;
+  color: #e2e8f0;
+  font-size: 1rem;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 140px;
+}
+
+button {
+  margin-top: 16px;
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.muted {
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.result {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #0b1120;
+  border: 1px solid #1e293b;
+}
+
+.result[data-type="success"] {
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.result[data-type="error"] {
+  border-color: #f97316;
+  color: #fdba74;
+}
+
+#status-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+
+#status-list li {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #1e293b;
+  margin-bottom: 8px;
+}
+
+.summary {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #1e293b;
+}
+
+.summary h3 {
+  margin: 0 0 8px;
+}
+
+.summary .result-card {
+  background: #0b1120;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.summary .result-card pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0 0;
+  color: #e2e8f0;
+}

@@ -9,22 +9,22 @@ import (
 )
 
 func (s *Store) InsertSteps(ctx context.Context, ms []models.Step) error {
-    tx, err := s.Conn.BeginTx(ctx, nil)
-    if err != nil {
-        return fmt.Errorf("failed to begin transaction: %w", err)
-    }
-    defer tx.Rollback()
+	tx, err := s.Conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
-    qtx := s.queries.WithTx(tx)
+	qtx := s.queries.WithTx(tx)
 
-    for _, step := range ms {
-        _, err := qtx.CreateStep(ctx, fromModelStepCreate(&step))
-        if err != nil {
-            return fmt.Errorf("failed to insert step %d: %w", step.StepNumber, err)
-        }
-    }
+	for _, step := range ms {
+		_, err := qtx.CreateStep(ctx, fromModelStepCreate(&step))
+		if err != nil {
+			return fmt.Errorf("failed to insert step %d: %w", step.StepNumber, err)
+		}
+	}
 
-    return tx.Commit()
+	return tx.Commit()
 }
 func (s *Store) GetStepByID(ctx context.Context, stepID string) (models.Step, error) {
 	step, err := s.queries.GetStepById(ctx, stepID)
@@ -34,23 +34,37 @@ func (s *Store) GetStepByID(ctx context.Context, stepID string) (models.Step, er
 	return toModelStep(&step), nil
 }
 
+func (s *Store) ListStepsByWorkflow(ctx context.Context, workflowID string) ([]models.Step, error) {
+	steps, err := s.queries.ListStepsByWorkflow(ctx, workflowID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]models.Step, 0, len(steps))
+	for _, step := range steps {
+		stepCopy := step
+		items = append(items, toModelStep(&stepCopy))
+	}
+	return items, nil
+}
+
 func (s *Store) UpdateStepStatus(ctx context.Context, stepID string, newStatus models.StepStatus, errMsg string) error {
 	err := s.queries.UpdateStepStatus(ctx, fromModelStepUpdateStatus(stepID, newStatus, errMsg))
-    return err
+	return err
 }
 
 func (s *Store) UpdateStepAsCompleted(ctx context.Context, stepID string, output map[string]any) error {
 	err := s.queries.UpdateStepAsCompleted(ctx, fromModelStepUpdateAsCompleted(stepID, output))
-    return err
+	return err
 }
 
 func (s *Store) GetNextStep(ctx context.Context, workflowID string, stepNumber int32) (models.Step, bool, error) {
-    nextStep, err := s.queries.GetNextStep(ctx, fromModelStepGetNextStep(workflowID, stepNumber))
-    if err == sql.ErrNoRows {
-        return models.Step{}, false, nil // no next step, workflow done
-    }
-    if err != nil {
-        return models.Step{}, false, err
-    }
-    return models.Step{WorkflowID: nextStep.WorkflowID, StepID: nextStep.StepID}, true, nil
+	nextStep, err := s.queries.GetNextStep(ctx, fromModelStepGetNextStep(workflowID, stepNumber))
+	if err == sql.ErrNoRows {
+		return models.Step{}, false, nil // no next step, workflow done
+	}
+	if err != nil {
+		return models.Step{}, false, err
+	}
+	return models.Step{WorkflowID: nextStep.WorkflowID, StepID: nextStep.StepID}, true, nil
 }
