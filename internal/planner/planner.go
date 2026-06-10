@@ -46,3 +46,11 @@ func (p *Planner) CreateWorkflow(ctx context.Context, requestString string) (str
 
 	return request.WorkflowID, nil
 }
+
+func (p *Planner) GetStepsByWorkflow(ctx context.Context, workflowID string) ([]models.Step, error) {
+	return p.store.ListStepsByWorkflow(ctx, workflowID)
+}
+
+func (p *Planner) GetWorkflow(ctx context.Context, workflowID string) (models.Workflow, error) {
+	return p.store.GetWorkflow(ctx, workflowID)
+}

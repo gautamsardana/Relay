@@ -25,7 +25,7 @@ func (w *WebSearch) Name() string {
 func (w *WebSearch) Description() string {
 	return `Searches the web for a given query using Tavily.
 Input: {"query": "your search query"}
-Output: {"results": [{"title": "string", "url": "string", "content": "string"}]}
+Output: {"answer": "concise answer synthesized from the search results", "results": [{"title": "string", "url": "string", "content": "string"}]}
 Use this tool when you need to find information, articles, job listings, or any web content.
 Do not use this tool multiple times for the same purpose.`
 }
@@ -37,10 +37,10 @@ func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (map[stri
 	}
 
 	payload, err := json.Marshal(map[string]any{
-		"query":           query,
-		"max_results":     10,
-		"include_answer":  false,
-		"search_depth":    "basic",
+		"query":          query,
+		"max_results":    5,
+		"include_answer": true,
+		"search_depth":   "advanced",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("web_search: failed to marshal request: %w", err)
@@ -64,6 +64,7 @@ func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (map[stri
 	}
 
 	var tavilyResp struct {
+		Answer  string `json:"answer"`
 		Results []struct {
 			Title   string `json:"title"`
 			URL     string `json:"url"`
@@ -84,6 +85,7 @@ func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (map[stri
 	}
 
 	return map[string]any{
+		"answer":  tavilyResp.Answer,
 		"results": results,
 	}, nil
 }

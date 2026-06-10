@@ -84,7 +84,3 @@ func (p *Planner) failWorkflow(ctx context.Context, workflow *models.Workflow, e
     p.store.UpdateWorkflowStatus(ctx, workflow.WorkflowID, models.WorkflowStatusFailed, err.Error())
     slog.Error("workflow failed", "workflow_id", workflow.WorkflowID, "error", err)
 }
-
-func (p *Planner) GetStepsByWorkflow(ctx context.Context, workflowID string) ([]models.Step, error) {
-	return p.store.ListStepsByWorkflow(ctx, workflowID)
-}

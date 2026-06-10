@@ -46,10 +46,12 @@ type stepUpdateItem struct {
 }
 
 type stepUpdatePayload struct {
-	WorkflowID string             `json:"workflow_id"`
-	Steps      []stepUpdateItem   `json:"steps"`
-	Completed  bool               `json:"completed"`
-	Summary    *stepUpdateSummary `json:"summary,omitempty"`
+	WorkflowID     string                `json:"workflow_id"`
+	WorkflowStatus models.WorkflowStatus `json:"workflow_status"`
+	WorkflowError  string                `json:"workflow_error,omitempty"`
+	Steps          []stepUpdateItem      `json:"steps"`
+	Completed      bool                  `json:"completed"`
+	Summary        *stepUpdateSummary    `json:"summary,omitempty"`
 }
 
 func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +79,12 @@ func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			workflow, err := s.planner.GetWorkflow(ctx, workflowID)
+			if err != nil {
+				_ = conn.WriteJSON(map[string]string{"error": err.Error()})
+				return
+			}
+
 			steps, err := s.planner.GetStepsByWorkflow(ctx, workflowID)
 			if err != nil {
 				_ = conn.WriteJSON(map[string]string{"error": err.Error()})
@@ -97,12 +105,18 @@ func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 
-			completed, summary := summarizeSteps(steps)
+			stepsCompleted, summary := summarizeSteps(steps)
+			completed := workflow.Status == models.WorkflowStatusSuccess || workflow.Status == models.WorkflowStatusFailed
+			if workflow.Status == models.WorkflowStatusProcessing && stepsCompleted {
+				completed = true
+			}
 			payload := stepUpdatePayload{
-				WorkflowID: workflowID,
-				Steps:      stepItems,
-				Completed:  completed,
-				Summary:    summary,
+				WorkflowID:     workflowID,
+				WorkflowStatus: workflow.Status,
+				WorkflowError:  workflow.Error,
+				Steps:          stepItems,
+				Completed:      completed,
+				Summary:        summary,
 			}
 
 			payloadBytes, _ := json.Marshal(payload)

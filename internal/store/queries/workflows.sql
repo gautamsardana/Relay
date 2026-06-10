@@ -5,7 +5,7 @@ VALUES ($1, $2, $3)
 RETURNING workflow_id, request, status, created_at, updated_at;
 
 -- name: GetWorkflowById :one
-SELECT workflow_id, request, status, created_at, updated_at
+SELECT workflow_id, request, status, error, created_at, updated_at
 FROM workflows
 WHERE workflow_id = $1;
 

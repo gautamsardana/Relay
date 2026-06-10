@@ -82,6 +82,14 @@ button:hover:not(:disabled) {
   margin-top: 4px;
 }
 
+.muted[data-type="error"] {
+  color: #fca5a5;
+}
+
+.muted[data-type="success"] {
+  color: #86efac;
+}
+
 .result {
   margin-top: 12px;
   padding: 12px 14px;
@@ -131,9 +139,54 @@ button:hover:not(:disabled) {
   margin-top: 10px;
 }
 
-.summary .result-card pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 8px 0 0;
-  color: #e2e8f0;
+.structured-output {
+  margin-top: 12px;
+}
+
+.structured-fields {
+  display: grid;
+  grid-template-columns: minmax(100px, auto) 1fr;
+  gap: 8px 14px;
+  margin: 0;
+}
+
+.structured-fields dt {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.structured-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.structured-fields .structured-fields,
+.structured-fields .structured-list {
+  padding: 10px;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+}
+
+.structured-list {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.structured-list > li + li {
+  margin-top: 10px;
+}
+
+.structured-output a {
+  color: #7dd3fc;
+}
+
+.search-answer p {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.search-answer a {
+  font-size: 0.9rem;
 }

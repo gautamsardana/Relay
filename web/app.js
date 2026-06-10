@@ -18,6 +18,7 @@ function setResult(message, type = 'info') {
 function resetStatus() {
   statusList.innerHTML = '';
   statusHint.textContent = 'Waiting for step updates...';
+  delete statusHint.dataset.type;
   summary.hidden = true;
   summaryLine.textContent = '';
   summaryResults.innerHTML = '';
@@ -40,13 +41,115 @@ function renderSteps(steps) {
     });
 }
 
+function formatLabel(value) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function parseJsonString(value) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function renderValue(value) {
+  if (typeof value === 'string') {
+    const parsed = parseJsonString(value);
+    if (parsed !== value) {
+      return renderValue(parsed);
+    }
+
+    if (/^https?:\/\//i.test(value)) {
+      const link = document.createElement('a');
+      link.href = value;
+      link.textContent = value;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      return link;
+    }
+
+    const text = document.createElement('span');
+    text.textContent = value;
+    return text;
+  }
+
+  if (Array.isArray(value)) {
+    const list = document.createElement('ol');
+    list.className = 'structured-list';
+    value.forEach((item) => {
+      const listItem = document.createElement('li');
+      listItem.appendChild(renderValue(item));
+      list.appendChild(listItem);
+    });
+    return list;
+  }
+
+  if (value && typeof value === 'object') {
+    const fields = document.createElement('dl');
+    fields.className = 'structured-fields';
+    Object.entries(value).forEach(([key, fieldValue]) => {
+      const term = document.createElement('dt');
+      term.textContent = formatLabel(key);
+      const detail = document.createElement('dd');
+      detail.appendChild(renderValue(fieldValue));
+      fields.append(term, detail);
+    });
+    return fields;
+  }
+
+  const text = document.createElement('span');
+  text.textContent = value == null ? 'None' : String(value);
+  return text;
+}
+
+function renderSearchAnswer(output) {
+  if (!output || typeof output.answer !== 'string' || !output.answer.trim()) {
+    return null;
+  }
+
+  const container = document.createElement('div');
+  container.className = 'search-answer';
+
+  const answer = document.createElement('p');
+  answer.textContent = output.answer.trim();
+  container.appendChild(answer);
+
+  const source = Array.isArray(output.results) ? output.results[0] : null;
+  if (source?.url) {
+    const citation = document.createElement('a');
+    citation.href = source.url;
+    citation.textContent = source.title ? `Source: ${source.title}` : 'View source';
+    citation.target = '_blank';
+    citation.rel = 'noopener noreferrer';
+    container.appendChild(citation);
+  }
+
+  return container;
+}
+
+function hasSearchAnswer(output) {
+  return Boolean(output && typeof output.answer === 'string' && output.answer.trim());
+}
+
 function renderSummary(summaryData) {
   if (!summaryData) {
     return;
   }
 
   summary.hidden = false;
-  summaryLine.textContent = `Completed ${summaryData.total} steps (${summaryData.succeeded} succeeded, ${summaryData.failed} failed).`;
+  const hasSingleAnswer = summaryData.results.length === 1
+    && hasSearchAnswer(summaryData.results[0].output);
+  summaryLine.textContent = hasSingleAnswer
+    ? ''
+    : `Completed ${summaryData.total} steps (${summaryData.succeeded} succeeded, ${summaryData.failed} failed).`;
   summaryResults.innerHTML = '';
 
   summaryData.results.forEach((result) => {
@@ -54,7 +157,9 @@ function renderSummary(summaryData) {
     card.className = 'result-card';
 
     const title = document.createElement('strong');
-    title.textContent = `Step ${result.step_number}: ${result.tool} — ${result.status}`;
+    title.textContent = hasSingleAnswer
+      ? 'Answer'
+      : `Step ${result.step_number}: ${result.tool} — ${result.status}`;
     card.appendChild(title);
 
     if (result.error) {
@@ -64,8 +169,9 @@ function renderSummary(summaryData) {
     }
 
     if (result.output) {
-      const output = document.createElement('pre');
-      output.textContent = JSON.stringify(result.output, null, 2);
+      const output = document.createElement('div');
+      output.className = 'structured-output';
+      output.appendChild(renderSearchAnswer(result.output) || renderValue(result.output));
       card.appendChild(output);
     }
 
@@ -79,38 +185,67 @@ function connectWebSocket(workflowId) {
   }
 
   const wsUrl = getWebSocketUrl(workflowId);
-  socket = new WebSocket(wsUrl);
+  const connection = new WebSocket(wsUrl);
+  let terminalUpdateReceived = false;
+  socket = connection;
 
-  socket.addEventListener('open', () => {
+  connection.addEventListener('open', () => {
+    if (connection !== socket) {
+      return;
+    }
     statusHint.textContent = 'Connected. Waiting for step updates...';
   });
 
-  socket.addEventListener('message', (event) => {
+  connection.addEventListener('message', (event) => {
+    if (connection !== socket) {
+      return;
+    }
+
     const payload = JSON.parse(event.data);
 
     if (payload.error) {
-      statusHint.textContent = payload.error;
+      terminalUpdateReceived = true;
+      statusHint.textContent = `Workflow update failed: ${payload.error}`;
+      statusHint.dataset.type = 'error';
       return;
     }
 
     renderSteps(payload.steps || []);
 
-    if (payload.completed) {
-      statusHint.textContent = 'All steps completed.';
+    if (payload.workflow_status === 'failed') {
+      terminalUpdateReceived = true;
+      statusHint.textContent = payload.workflow_error
+        ? `Workflow failed: ${payload.workflow_error}`
+        : 'Workflow failed.';
+      statusHint.dataset.type = 'error';
       renderSummary(payload.summary);
-      socket.close();
-    }
-  });
-
-  socket.addEventListener('close', () => {
-    if (!summary.hidden) {
+      connection.close();
       return;
     }
-    statusHint.textContent = 'Websocket closed.';
+
+    if (payload.completed) {
+      terminalUpdateReceived = true;
+      statusHint.textContent = 'Workflow completed.';
+      statusHint.dataset.type = 'success';
+      renderSummary(payload.summary);
+      connection.close();
+    }
   });
 
-  socket.addEventListener('error', () => {
-    statusHint.textContent = 'Websocket error.';
+  connection.addEventListener('close', () => {
+    if (connection !== socket || terminalUpdateReceived) {
+      return;
+    }
+    statusHint.textContent = 'Lost connection while waiting for workflow updates.';
+    statusHint.dataset.type = 'error';
+  });
+
+  connection.addEventListener('error', () => {
+    if (connection !== socket || terminalUpdateReceived) {
+      return;
+    }
+    statusHint.textContent = 'Could not connect to workflow updates.';
+    statusHint.dataset.type = 'error';
   });
 }
 

@@ -25,14 +25,3 @@ sql:
               import: ""
               package: ""
               type: "string"
-          - db_type: "jsonb"
-            go_type:
-              import: "encoding/json"
-              package: "json"
-              type: "RawMessage"
-          - db_type: "jsonb"
-            nullable: true
-            go_type:
-              import: "github.com/sqlc-dev/pqtype"
-              package: "pqtype"
-              type: "NullRawMessage"

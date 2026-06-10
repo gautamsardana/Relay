@@ -17,6 +17,7 @@ func toModelWorkflow(sw *sqlc.Workflow) models.Workflow {
 		WorkflowID: sw.WorkflowID,
 		Request:    sw.Request,
 		Status:     models.WorkflowStatus(sw.Status),
+		Error:      sw.Error.String,
 		CreatedAt:  sw.CreatedAt,
 		UpdatedAt:  sw.UpdatedAt,
 	}
@@ -54,55 +55,55 @@ func toModelStep(ss *sqlc.Step) models.Step {
 }
 
 func fromModelWorkflowCreate(mw *models.Workflow) sqlc.CreateWorkflowParams {
-    return sqlc.CreateWorkflowParams{
-        WorkflowID: mw.WorkflowID,
-        Request:    mw.Request,
-        Status:     mw.Status,
-    }
+	return sqlc.CreateWorkflowParams{
+		WorkflowID: mw.WorkflowID,
+		Request:    mw.Request,
+		Status:     mw.Status,
+	}
 }
 
 func fromModelWorkflowUpdateStatus(workflowID string, status models.WorkflowStatus, errMsg string) sqlc.UpdateWorkflowStatusParams {
-    return sqlc.UpdateWorkflowStatusParams{
-        WorkflowID: workflowID,
-        Status:     status,
+	return sqlc.UpdateWorkflowStatusParams{
+		WorkflowID: workflowID,
+		Status:     status,
 		Error:      sql.NullString{String: errMsg, Valid: errMsg != ""},
-    }
+	}
 }
 
 func fromModelStepCreate(ms *models.Step) sqlc.CreateStepParams {
-    inputBytes, _ := json.Marshal(ms.Input)
+	inputBytes, _ := json.Marshal(ms.Input)
 	outputBytes, _ := json.Marshal(ms.Output)
 
-    return sqlc.CreateStepParams{
-        StepID:      ms.StepID,
-        WorkflowID:  ms.WorkflowID,
-        StepNumber:  int32(ms.StepNumber),
-        Tool:        ms.Tool,
-        Description: ms.Description,
-        Input:       inputBytes,
-        Output:      outputBytes,
-        Status:      ms.Status,
-        RetryCount:  int32(ms.RetryCount),
-        Error:       sql.NullString{String: ms.Error, Valid: ms.Error != ""},
-    }
+	return sqlc.CreateStepParams{
+		StepID:      ms.StepID,
+		WorkflowID:  ms.WorkflowID,
+		StepNumber:  int32(ms.StepNumber),
+		Tool:        ms.Tool,
+		Description: ms.Description,
+		Input:       inputBytes,
+		Output:      outputBytes,
+		Status:      ms.Status,
+		RetryCount:  int32(ms.RetryCount),
+		Error:       sql.NullString{String: ms.Error, Valid: ms.Error != ""},
+	}
 }
 
 func fromModelStepUpdateStatus(stepID string, status models.StepStatus, errMsg string) sqlc.UpdateStepStatusParams {
-    return sqlc.UpdateStepStatusParams{
-        StepID: stepID,
-        Status: status,
-		Error:      sql.NullString{String: errMsg, Valid: errMsg != ""},
-    }
+	return sqlc.UpdateStepStatusParams{
+		StepID: stepID,
+		Status: status,
+		Error:  sql.NullString{String: errMsg, Valid: errMsg != ""},
+	}
 }
 
 func fromModelStepUpdateAsCompleted(stepID string, output map[string]any) sqlc.UpdateStepAsCompletedParams {
 	outputBytes, _ := json.Marshal(output)
 
-    return sqlc.UpdateStepAsCompletedParams{
-        StepID: stepID,
-        Status: models.StepStatusSuccess,
+	return sqlc.UpdateStepAsCompletedParams{
+		StepID: stepID,
+		Status: models.StepStatusSuccess,
 		Output: outputBytes,
-    }
+	}
 }
 
 func fromModelStepGetNextStep(workflowID string, stepNumber int32) sqlc.GetNextStepParams {

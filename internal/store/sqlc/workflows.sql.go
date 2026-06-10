@@ -48,26 +48,19 @@ func (q *Queries) CreateWorkflow(ctx context.Context, arg CreateWorkflowParams) 
 }
 
 const getWorkflowById = `-- name: GetWorkflowById :one
-SELECT workflow_id, request, status, created_at, updated_at
+SELECT workflow_id, request, status, error, created_at, updated_at
 FROM workflows
 WHERE workflow_id = $1
 `
 
-type GetWorkflowByIdRow struct {
-	WorkflowID string                `json:"workflow_id"`
-	Request    string                `json:"request"`
-	Status     models.WorkflowStatus `json:"status"`
-	CreatedAt  time.Time             `json:"created_at"`
-	UpdatedAt  time.Time             `json:"updated_at"`
-}
-
-func (q *Queries) GetWorkflowById(ctx context.Context, workflowID string) (GetWorkflowByIdRow, error) {
+func (q *Queries) GetWorkflowById(ctx context.Context, workflowID string) (Workflow, error) {
 	row := q.db.QueryRowContext(ctx, getWorkflowById, workflowID)
-	var i GetWorkflowByIdRow
+	var i Workflow
 	err := row.Scan(
 		&i.WorkflowID,
 		&i.Request,
 		&i.Status,
+		&i.Error,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
