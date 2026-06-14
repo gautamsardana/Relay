@@ -39,6 +39,8 @@ func main() {
 
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewWebSearch(config))
+	registry.Register(tools.NewHTTPRequest())
+	registry.Register(tools.NewDocumentRead())
 
 	planner := planner.New(store, plannerQueue, agent, registry)
 
