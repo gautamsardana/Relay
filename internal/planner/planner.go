@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/gautamsardana/relay/internal/agent"
+	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/models"
 	"github.com/gautamsardana/relay/internal/queue"
 	"github.com/gautamsardana/relay/internal/store"
@@ -13,18 +14,20 @@ import (
 )
 
 type Planner struct {
-	store    *store.Store
-	queue    *queue.QueueManager
-	agent    *agent.AgentManager
-	registry *tools.Registry
+	store      *store.Store
+	queue      *queue.QueueManager
+	agent      *agent.AgentManager
+	registry   *tools.Registry
+	maxRetries int
 }
 
-func New(s *store.Store, q *queue.QueueManager, a *agent.AgentManager, r *tools.Registry) *Planner {
+func New(cfg *config.Config, s *store.Store, q *queue.QueueManager, a *agent.AgentManager, r *tools.Registry) *Planner {
 	return &Planner{
-		store:    s,
-		queue:    q,
-		agent:    a,
-		registry: r,
+		store:      s,
+		queue:      q,
+		agent:      a,
+		registry:   r,
+		maxRetries: cfg.App.MaxStepRetries,
 	}
 }
 

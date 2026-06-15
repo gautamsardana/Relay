@@ -63,38 +63,21 @@ func (q *Queries) CreateStep(ctx context.Context, arg CreateStepParams) (Step, e
 	return i, err
 }
 
-const getNextStep = `-- name: GetNextStep :one
-SELECT step_id, workflow_id
+
+const getStepByWorkflowAndNumber = `-- name: GetStepByWorkflowAndNumber :one
+SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
 FROM steps
-WHERE workflow_id = $1 AND step_number = $2 AND status = 'pending'
+WHERE workflow_id = $1 AND step_number = $2
 LIMIT 1
 `
 
-type GetNextStepParams struct {
+type GetStepByWorkflowAndNumberParams struct {
 	WorkflowID string `json:"workflow_id"`
 	StepNumber int32  `json:"step_number"`
 }
 
-type GetNextStepRow struct {
-	StepID     string `json:"step_id"`
-	WorkflowID string `json:"workflow_id"`
-}
-
-func (q *Queries) GetNextStep(ctx context.Context, arg GetNextStepParams) (GetNextStepRow, error) {
-	row := q.db.QueryRowContext(ctx, getNextStep, arg.WorkflowID, arg.StepNumber)
-	var i GetNextStepRow
-	err := row.Scan(&i.StepID, &i.WorkflowID)
-	return i, err
-}
-
-const getStepById = `-- name: GetStepById :one
-SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
-FROM steps
-WHERE step_id = $1
-`
-
-func (q *Queries) GetStepById(ctx context.Context, stepID string) (Step, error) {
-	row := q.db.QueryRowContext(ctx, getStepById, stepID)
+func (q *Queries) GetStepByWorkflowAndNumber(ctx context.Context, arg GetStepByWorkflowAndNumberParams) (Step, error) {
+	row := q.db.QueryRowContext(ctx, getStepByWorkflowAndNumber, arg.WorkflowID, arg.StepNumber)
 	var i Step
 	err := row.Scan(
 		&i.StepID,
@@ -111,6 +94,118 @@ func (q *Queries) GetStepById(ctx context.Context, stepID string) (Step, error) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const claimStep = `-- name: ClaimStep :one
+UPDATE steps
+SET status = 'processing', updated_at = now()
+WHERE step_id = $1 AND status = 'pending'
+RETURNING step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
+`
+
+func (q *Queries) ClaimStep(ctx context.Context, stepID string) (Step, error) {
+	row := q.db.QueryRowContext(ctx, claimStep, stepID)
+	var i Step
+	err := row.Scan(
+		&i.StepID,
+		&i.WorkflowID,
+		&i.StepNumber,
+		&i.Tool,
+		&i.Description,
+		&i.Input,
+		&i.Output,
+		&i.Status,
+		&i.RetryCount,
+		&i.Error,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getStuckSteps = `-- name: GetStuckSteps :many
+SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
+FROM steps
+WHERE status = 'processing' AND updated_at < NOW() - $1::interval
+`
+
+func (q *Queries) GetStuckSteps(ctx context.Context, timeout string) ([]Step, error) {
+	rows, err := q.db.QueryContext(ctx, getStuckSteps, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Step
+	for rows.Next() {
+		var i Step
+		if err := rows.Scan(
+			&i.StepID,
+			&i.WorkflowID,
+			&i.StepNumber,
+			&i.Tool,
+			&i.Description,
+			&i.Input,
+			&i.Output,
+			&i.Status,
+			&i.RetryCount,
+			&i.Error,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+const cancelUnstartedSteps = `-- name: CancelUnstartedSteps :exec
+UPDATE steps
+SET status = 'cancelled', error = $2, updated_at = now()
+WHERE workflow_id = $1 AND status IN ('init', 'pending')
+`
+
+type CancelUnstartedStepsParams struct {
+	WorkflowID string `json:"workflow_id"`
+	Error      string `json:"error"`
+}
+
+func (q *Queries) CancelUnstartedSteps(ctx context.Context, arg CancelUnstartedStepsParams) error {
+	_, err := q.db.ExecContext(ctx, cancelUnstartedSteps, arg.WorkflowID, arg.Error)
+	return err
+}
+
+const markStepPending = `-- name: MarkStepPending :exec
+UPDATE steps
+SET status = 'pending', updated_at = now()
+WHERE step_id = $1
+`
+
+func (q *Queries) MarkStepPending(ctx context.Context, stepID string) error {
+	_, err := q.db.ExecContext(ctx, markStepPending, stepID)
+	return err
+}
+
+const resetStepToPending = `-- name: ResetStepToPending :exec
+UPDATE steps
+SET status = 'pending', error = NULL, updated_at = now()
+WHERE step_id = $1
+`
+
+func (q *Queries) ResetStepToPending(ctx context.Context, stepID string) error {
+	_, err := q.db.ExecContext(ctx, resetStepToPending, stepID)
+	return err
+}
+
+const incrementStepRetryCount = `-- name: IncrementStepRetryCount :exec
+UPDATE steps
+SET retry_count = retry_count + 1, updated_at = now()
+WHERE step_id = $1
+`
+
+func (q *Queries) IncrementStepRetryCount(ctx context.Context, stepID string) error {
+	_, err := q.db.ExecContext(ctx, incrementStepRetryCount, stepID)
+	return err
 }
 
 const listStepsByWorkflow = `-- name: ListStepsByWorkflow :many

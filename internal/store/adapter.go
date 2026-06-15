@@ -106,8 +106,8 @@ func fromModelStepUpdateAsCompleted(stepID string, output map[string]any) sqlc.U
 	}
 }
 
-func fromModelStepGetNextStep(workflowID string, stepNumber int32) sqlc.GetNextStepParams {
-	return sqlc.GetNextStepParams{
+func fromWorkflowStepNumber (workflowID string, stepNumber int32) sqlc.GetStepByWorkflowAndNumberParams {
+	return sqlc.GetStepByWorkflowAndNumberParams{
 		WorkflowID: workflowID,
 		StepNumber: stepNumber,
 	}

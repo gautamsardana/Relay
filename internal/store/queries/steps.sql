@@ -3,10 +3,6 @@ INSERT INTO steps (step_id, workflow_id, step_number, tool, description, input, 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at;
 
--- name: GetStepById :one
-SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
-FROM steps
-WHERE step_id = $1;
 
 -- name: ListStepsByWorkflow :many
 SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
@@ -19,13 +15,44 @@ UPDATE steps
 SET status = $2, error = $3, updated_at = now()
 WHERE step_id = $1;
 
+-- name: ClaimStep :one
+UPDATE steps
+SET status = 'processing', updated_at = now()
+WHERE step_id = $1 AND status = 'pending'
+RETURNING step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at;
+
+-- name: GetStuckSteps :many
+SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
+FROM steps
+WHERE status = 'processing' AND updated_at < NOW() - $1::interval;
+
+-- name: CancelUnstartedSteps :exec
+UPDATE steps
+SET status = 'cancelled', error = $2, updated_at = now()
+WHERE workflow_id = $1 AND status IN ('init', 'pending');
+
+-- name: MarkStepPending :exec
+UPDATE steps
+SET status = 'pending', updated_at = now()
+WHERE step_id = $1;
+
+-- name: ResetStepToPending :exec
+UPDATE steps
+SET status = 'pending', error = NULL, updated_at = now()
+WHERE step_id = $1;
+
+-- name: IncrementStepRetryCount :exec
+UPDATE steps
+SET retry_count = retry_count + 1, updated_at = now()
+WHERE step_id = $1;
+
 -- name: UpdateStepAsCompleted :exec
 UPDATE steps
 SET status = $2, output = $3, updated_at = now()
 WHERE step_id = $1;
 
--- name: GetNextStep :one
-SELECT step_id, workflow_id
+-- name: GetStepByWorkflowAndNumber :one
+SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
 FROM steps
-WHERE workflow_id = $1 AND step_number = $2 AND status = 'pending'
+WHERE workflow_id = $1 AND step_number = $2
 LIMIT 1;

@@ -45,7 +45,7 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 			Tool:        step.Tool,
 			Description: step.Description,
 			Input:       step.Input,
-			Status:      models.StepStatusPending,
+			Status:      models.StepStatusInit,
 			RetryCount:  0,
 		}
 	}
@@ -71,9 +71,15 @@ func (p *Planner) HandleWorkflow(request *models.Workflow){
 		p.failWorkflow(ctx, request, fmt.Errorf("no steps defined for this workflow"))
 		return
 	}
-	firstStepID := modelSteps[0].StepID
-	
-	err = p.queue.PublishStep(ctx, queue.StepEvent{WorkflowID: request.WorkflowID, StepID: firstStepID})
+	firstStep := modelSteps[0]
+
+	err = p.store.MarkStepPending(ctx, firstStep.StepID)
+	if err != nil {
+		p.failWorkflow(ctx, request, fmt.Errorf("failed to mark first step pending: %w", err))
+		return
+	}
+
+	err = p.queue.PublishStep(ctx, queue.StepEvent{WorkflowID: request.WorkflowID, StepID: firstStep.StepID})
 	if err != nil {
 		p.failWorkflow(ctx, request, err)
 		return

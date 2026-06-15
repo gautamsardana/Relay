@@ -17,10 +17,12 @@ import (
 type StepStatus string
 
 const (
+	StepStatusInit       StepStatus = "init"
 	StepStatusPending    StepStatus = "pending"
 	StepStatusProcessing StepStatus = "processing"
 	StepStatusSuccess    StepStatus = "success"
 	StepStatusFailed     StepStatus = "failed"
+	StepStatusCancelled  StepStatus = "cancelled"
 )
 
 func (e *StepStatus) Scan(src interface{}) error {
