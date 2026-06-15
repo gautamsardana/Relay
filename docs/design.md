@@ -1,144 +1,192 @@
-# Relay — AI Orchestrator Design Spec
+# Relay v2 — System Design
 
-**Date:** 2026-04-06
-**Last updated:** 2026-04-21
+**Last updated:** 2026-06-14
+
+---
 
 ## Overview
 
-Relay is an AI orchestrator that accepts natural language commands (e.g. "find 10 latest software engineering jobs in the US and post to Notion"), breaks them into executable steps using Claude, and runs those steps asynchronously via RabbitMQ workers. State is durably maintained in Postgres throughout.
+Relay is an AI agent runtime. Users create persistent workers with instructions and a schedule. Workers run automatically, execute multi-step plans via distributed workers, and accumulate memory across runs.
+
+The execution engine from v1 (planner → RabbitMQ → workers → Postgres) is unchanged. What changes is the abstraction above it: instead of one-shot workflows, users define long-lived workers that produce workflow runs on a schedule.
 
 ---
 
 ## Architecture
 
-### Repo Structure
-
-Monorepo with two deployable binaries:
+### Two Binaries
 
 ```
-cmd/
-  api/        — REST server (workflow submission + status)
-  worker/     — RabbitMQ consumer (step execution)
-
-internal/
-  planner/    — receives command, calls agent, persists workflow + steps, publishes first step, runs cron jobs
-  agent/      — Claude API client; generates structured step plans
-  worker/     — step executor; updates step + workflow state, publishes next step to RabbitMQ
-  tools/      — pluggable tool registry
-  store/      — Postgres queries (workflows, steps)
-  models/     — shared types (Workflow, Step, etc.)
-
-web/          — frontend UI
+cmd/api/     — HTTP server, planner, scheduler cron, reconciler cron
+cmd/worker/  — RabbitMQ consumer, step executor
 ```
 
-### Component Ownership
+The API binary handles everything related to creating and orchestrating work. The worker binary handles execution. They scale independently.
 
-- **API server, planner, agent** — same binary, logically separated. They scale together and every request flows through all three sequentially.
-- **Worker** — separate binary. Scales independently based on step execution load.
-- **Cron jobs (reconciler, scheduler)** — run inside the planner binary.
+### Request Flow (v2)
 
-### Request Flow
+1. User creates a **Worker** with instructions and a cron schedule
+2. At the scheduled time, the **Scheduler** (cron inside API binary) creates a **WorkflowRun** for that worker
+3. The **Planner** reads the worker's instructions and current `worker_state`, calls Claude to generate a step plan
+4. Steps are inserted into Postgres as `pending`, first step published to RabbitMQ
+5. **Worker goroutines** consume from the queue, claim steps atomically, execute tools
+6. On step success: worker updates step → `success`, publishes next step to RabbitMQ
+7. On last step success: worker marks run → `success`, writes updated state back to `worker_state`
+8. On failure: retry up to MAX_RETRIES, then mark step and run as `failed`
+9. **Reconciler** (cron inside API binary) re-publishes steps stuck in `processing` due to worker crashes
 
-1. `POST /workflows` — API receives request, planner creates a workflow record in Postgres with status `init`, returns `workflow_id` immediately
-2. Planner calls agent (Claude) with the command and available tools → receives an ordered list of steps
-3. All steps are inserted into Postgres with status `pending`
-4. Planner validates that every tool name Claude returned exists in the tool registry — rejects the plan and marks workflow `failed` if not
-5. Planner marks workflow status → `processing`, publishes step 1's event to RabbitMQ queue `relay.steps`
-6. A worker consumes the event, atomically claims the step (`UPDATE ... WHERE status='pending'`), marks it `processing`, executes it via the appropriate tool
-7. On success → worker marks step `success`, immediately publishes next step's event to RabbitMQ (zero latency between steps); if no steps remain, marks workflow `success`
-8. On failure → worker increments `retry_count`, retries up to max; after max retries, marks step `failed` and workflow `failed`
-9. Workflow completes when all steps are marked `success`
+### How Memory Flows Into Planning
+
+Before calling Claude, the planner reads `worker_state.data` and injects it into the planning prompt:
+
+```
+System: You are an execution planner...
+        Available tools: [tool list with schemas]
+        Worker instructions: [worker.instructions]
+        Worker memory (from previous runs): [worker_state.data as JSON]
+        ...
+User: Generate a plan for this run.
+```
+
+Claude sees what the worker already knows and generates steps accordingly — e.g. skipping jobs already in memory, narrowing searches based on past results.
+
+At the end of a run, a `state_write` tool call updates `worker_state.data` with new information.
 
 ---
 
 ## Data Model
 
-### `workflows`
+### `users`
+```sql
+user_id     UUID PRIMARY KEY
+email       TEXT NOT NULL UNIQUE
+created_at  TIMESTAMPTZ
+```
 
-| Column | Type | Notes |
-|---|---|---|
-| workflow_id | UUID | Primary key |
-| request | TEXT | Original natural language command |
-| status | ENUM | `init`, `processing`, `success`, `failed` |
-| created_at | TIMESTAMP | |
-| updated_at | TIMESTAMP | |
+### `workers`
+```sql
+worker_id     UUID PRIMARY KEY
+user_id       UUID REFERENCES users
+name          TEXT NOT NULL
+instructions  TEXT NOT NULL         -- what the worker does
+schedule      TEXT NOT NULL         -- cron expression, e.g. "0 9 * * *"
+status        ENUM(active, paused, archived)
+resume_url    TEXT                  -- optional, for resume-scored job search
+created_at    TIMESTAMPTZ
+updated_at    TIMESTAMPTZ
+```
 
-**Status transitions:**
-- `init` — set by planner on workflow creation (before Claude is called)
-- `processing` — set by planner after all steps are inserted and step 1 is published
-- `success` — set by worker after last step completes successfully
-- `failed` — set by worker after a step exhausts all retries
+Represents a permanent AI employee. Owns its own memory and run history.
+
+### `worker_state` _(future, not v1)_
+
+Not built in v1. The job hunter doesn't need it — `seen_jobs` handles deduplication and there is no user feedback loop yet to accumulate preferences.
+
+Will become useful when:
+- User feedback exists (ignore this company, prefer these roles) and the worker needs to remember it across runs
+- Other domains are added that genuinely need persistent context (competitor monitor tracking last seen release, stock tracker storing moving averages)
+- Vector memory (RAG) replaces it entirely for semantic recall
+
+When introduced:
+```sql
+state_id    UUID PRIMARY KEY
+worker_id   UUID REFERENCES workers UNIQUE
+data        JSONB NOT NULL DEFAULT '{}'
+updated_at  TIMESTAMPTZ
+```
+
+### `workflow_runs`
+```sql
+run_id      UUID PRIMARY KEY
+worker_id   UUID REFERENCES workers
+status      ENUM(init, processing, success, failed)
+error       TEXT
+started_at  TIMESTAMPTZ
+finished_at TIMESTAMPTZ
+```
+
+One execution of a worker. Created by the scheduler or a manual trigger. Replaces the v1 `workflows` table.
 
 ### `steps`
+```sql
+step_id      UUID PRIMARY KEY
+run_id       UUID REFERENCES workflow_runs   -- was workflow_id in v1
+step_number  INT NOT NULL
+tool         TEXT NOT NULL
+description  TEXT NOT NULL
+input        JSONB NOT NULL DEFAULT '{}'
+output       JSONB
+status       ENUM(pending, processing, success, failed)
+retry_count  INT NOT NULL DEFAULT 0
+error        TEXT
+created_at   TIMESTAMPTZ
+updated_at   TIMESTAMPTZ
+```
 
-| Column | Type | Notes |
-|---|---|---|
-| step_id | UUID | Primary key |
-| workflow_id | UUID | FK → workflows |
-| step_number | INT | Execution order (1-indexed) |
-| tool | TEXT | Tool name (e.g. `web_search`, `notion_write`) |
-| description | TEXT | Natural language description of what this step does |
-| input | JSONB | Tool input parameters |
-| output | JSONB | Tool result |
-| status | ENUM | `pending`, `processing`, `success`, `failed` |
-| retry_count | INT | Default 0; incremented before each retry attempt |
-| error | TEXT | Error message if failed |
-| created_at | TIMESTAMP | |
-| updated_at | TIMESTAMP | |
+Same concept as v1. `run_id` replaces `workflow_id`.
 
-**Status transitions (all worker-owned):**
-- `pending` — inserted by planner
-- `processing` — set by worker atomically before execution begins
-- `success` / `failed` — set by worker after execution
+### `seen_jobs` (job-hunter specific)
+```sql
+id          UUID PRIMARY KEY
+worker_id   UUID REFERENCES workers
+company_id  TEXT NOT NULL     -- ATS company slug
+job_id      TEXT NOT NULL     -- ATS job identifier
+seen_at     TIMESTAMPTZ
+UNIQUE(worker_id, company_id, job_id)
+```
+
+Deduplication table. The `job_search` tool queries this table directly and filters out already-seen jobs before returning results — so Claude never sees duplicates and `worker_state` never accumulates job IDs. At the end of a run, newly surfaced job IDs are inserted here. After 100 runs this table grows large; `worker_state` stays lean.
 
 ### RabbitMQ
 
 **Queue:** `relay.steps`
 
-**Message payload:**
+**Message:**
 ```json
-{
-  "workflow_id": "uuid",
-  "step_id": "uuid"
-}
+{ "run_id": "uuid", "step_id": "uuid" }
 ```
 
-Messages are intentionally thin. Workers fetch full step details from Postgres. Each message is delivered to exactly one worker — RabbitMQ ensures no two workers process the same step. Multiple worker instances can run concurrently, each handling steps from different workflows, scaling horizontally independent of the API server.
+Thin messages — workers fetch full step details from Postgres. Quorum queue for durability.
 
 ---
 
 ## Agent
 
-The `internal/agent` package wraps the Claude API.
+The agent package wraps multiple LLM providers with a primary/fallback pattern.
 
-**Plan generation:** Called by the planner with the user's command and the list of available tools (names, descriptions, and input/output schemas). Claude returns a structured JSON array of steps:
+**Providers:** Claude (primary), GPT-4, Groq
 
+**Plan generation prompt includes:**
+- Worker instructions
+- Worker memory (current `worker_state.data`)
+- Available tools (name, description, input schema, output schema)
+- Expected JSON response format
+
+**Response format:**
 ```json
 [
   {
     "step_number": 1,
-    "tool": "web_search",
-    "description": "Search for the 10 latest software engineering jobs in the US",
-    "input": {"query": "latest software engineering jobs US 2024"}
+    "tool": "job_search",
+    "description": "Search for remote Go backend jobs on Greenhouse and Lever",
+    "input": {"companies": ["stripe", "vercel", "linear"], "role": "backend", "remote": true}
   },
   {
     "step_number": 2,
-    "tool": "notion_write",
-    "description": "Post the filtered job results to Notion",
-    "input": {"content": "{{steps[1].output.results}}"}
+    "tool": "state_write",
+    "description": "Update worker memory with newly seen job IDs",
+    "input": {"seen_job_ids": "{{steps[1].output.job_ids}}"}
   }
 ]
 ```
 
-**Tool validation:** After receiving the plan, the planner checks every `tool` value against the registered tool registry. If Claude returns an unrecognised tool name, the workflow is marked `failed` immediately rather than letting it blow up at execution time.
-
-**Step input interpolation:** Claude references prior step outputs using a template syntax (e.g. `{{steps[1].output.results}}`). The worker resolves these templates at execution time by reading the relevant step outputs from Postgres. This front-loads all intelligence into the planning prompt — the worker is a dumb template resolver, not a decision-maker. Claude knows the output shape of each tool because tool descriptions include their response schema.
+**Template interpolation:** `{{steps[N].output.field}}` references are resolved by the worker at execution time by reading prior step outputs from Postgres.
 
 ---
 
 ## Tools
 
-Tools are pluggable via a Go interface:
+Go interface — pluggable:
 
 ```go
 type Tool interface {
@@ -148,124 +196,122 @@ type Tool interface {
 }
 ```
 
-A central registry holds all registered tools. At startup, all tools are registered and their names, descriptions, and input/output schemas are passed to Claude during plan generation so it knows what it can use.
+### v1 Tools (already built)
+| Tool | What it does |
+|---|---|
+| `web_search` | Tavily API — general web search |
+| `http_request` | Generic HTTP escape hatch |
+| `document_read` | Fetch URL or read local file |
 
-Adding a new tool = implement the `Tool` interface and register it at startup. Nothing else changes.
+### v2 Tools (to build)
+| Tool | What it does |
+|---|---|
+| `job_search` | Aggregates jobs from Greenhouse, Ashby, Lever ATS APIs — filters against `seen_jobs` before returning |
+| `score_jobs` | Claude call ranking job list against resume |
+| `notify` | Send notification (email, Slack webhook) |
+| `state_read` / `state_write` | _(future)_ Read/write `worker_state` — not needed until user feedback or multi-domain support |
 
-**Tool credentials** (API keys, tokens) are injected via environment variables into tool constructors at startup. Never hardcoded.
+### `job_search` Architecture
 
-**MCP:** Not used. MCP is for when Claude calls tools during inference. In Relay, Claude only generates a plan — workers call tools directly. MCP adds no value here.
+Generic web search returns job board pages, not job postings. The `job_search` tool hits ATS APIs directly:
 
-### Initial Tools
+```
+job_search(companies, filters)
+        │
+        ├── Greenhouse: boards.greenhouse.io/v1/boards/{slug}/jobs
+        ├── Ashby:      api.ashbyhq.com/jobPosting.list
+        └── Lever:      api.lever.co/v0/postings/{slug}
+                │
+        Normalize to common schema
+                │
+        Deduplicate against seen_jobs table
+                │
+        Return structured job list
+```
 
-| Tool | Integration | Notes |
-|---|---|---|
-| `web_search` | Tavily or Serper API | Built for LLM use cases, returns clean structured results |
-| `notion_write` | Notion REST API | Requires integration token |
-| `document_read` | HTTP fetch (URL) or file read (path) | No external dependency |
-| `http_request` | Go `net/http` | Generic escape hatch; Claude can call any API without a dedicated tool |
+Input schema: `{"companies": [string], "role": string, "remote": bool, "min_salary": int}`
+Output schema: `{"jobs": [{"id", "company", "title", "url", "location", "salary"}]}`
 
-**Transform steps:** For cases where a tool returns more data than needed (e.g. 50 job listings when only 10 are wanted), Claude plans an explicit intermediate step using a lightweight `transform` tool — a small focused Claude call that filters/summarises data before passing it to the next tool.
+**Company list:** Maintained as a curated list of tech companies with their ATS slugs. Starts at ~300-500. Expanded by web search or user additions over time.
 
 ---
 
 ## API
 
-**Endpoints:**
-
 | Method | Path | Description |
 |---|---|---|
-| POST | `/workflows` | Submit a command; returns `workflow_id` |
-| GET | `/workflows/:id` | Get workflow details + all steps + statuses |
-| GET | `/workflows` | List all workflows |
+| POST | `/workers` | Create a worker |
+| GET | `/workers` | List all workers for user |
+| GET | `/workers/:id` | Get worker detail + run history |
+| POST | `/workers/:id/run` | Manually trigger a run |
+| GET | `/runs/:id` | Get run detail + steps |
+| GET | `/ws/runs/:id` | WebSocket — live step updates for a run |
 
 ---
 
-## Frontend
+## Scheduler
 
-Simple two-view web UI (`web/`):
+Cron running inside the API binary. Runs every minute.
 
-- **Home** — text input to submit a command; list of past workflows with status
-- **Workflow detail** — displays the full step plan, live status per step, and step outputs including errors
+Logic:
+1. Find all workers where `status = 'active'` and `next_run_at <= NOW()`
+2. For each: create a new `workflow_run`, hand it to the planner, update `next_run_at`
 
-The UI polls `GET /workflows/:id` every 3 seconds to reflect live progress. WebSockets can be added later for true real-time updates.
-
----
-
-## Step Execution
-
-Steps within a single workflow run **sequentially** — each step waits for the previous to complete before its RabbitMQ message is published. The `step_number` field enforces order.
-
-The worker binary runs with a configurable number of goroutines consuming from `relay.steps` concurrently. This allows multiple workflows to make progress in parallel (e.g. goroutine 1 handles workflow A's step 2, goroutine 2 handles workflow B's step 1 simultaneously). The concurrency setting lives in config (e.g. `WORKER_CONCURRENCY=5`).
-
-**Atomic step claiming:** Workers claim a step with a conditional update — `UPDATE steps SET status='processing' WHERE step_id=? AND status='pending'` — and check rows affected before proceeding. If 0 rows updated, another worker already claimed it; abort. This prevents double execution.
+The `next_run_at` field on the worker is computed from the cron expression after each run completes.
 
 ---
 
-## Error Handling
+## Reconciler
 
-- Worker increments `retry_count` in Postgres before each retry attempt
-- Workers retry a failed step up to N times (configurable, default 3)
-- After retries are exhausted, worker marks step `failed` and workflow `failed`
-- No agent recovery call in v1 — see Future Ideas
+Cron running inside the API binary every 60 seconds. Handles crash recovery only — normal step progression is done by the worker publishing the next step directly.
 
-### Reconciler
-
-Workers publish the next step directly after completing one — no cron involvement in normal progression. The reconciler's only job is crash recovery: handle steps stuck in `processing` because the worker died mid-execution before finishing.
-
-A reconciler cron runs inside the planner binary every N seconds (default 60s).
-
-**Logic:**
-1. Find all steps where `status = 'processing'` AND `updated_at < NOW() - 5 minutes`
+Logic:
+1. Find steps where `status = 'processing'` AND `updated_at < NOW() - 5 minutes`
 2. For each stuck step:
    - Increment `retry_count`
-   - If `retry_count >= MAX_RETRIES` → mark step `failed`, mark workflow `failed`
-   - Otherwise → reset step to `pending`, re-publish its event to RabbitMQ using the same `step_id`
-
-**Timeout:** 5 minutes — safely above the worst-case tool execution time (~30s for a Claude transform call). Uses `updated_at`, which is set when the worker marks the step `processing`.
-
-**Idempotency:** The atomic step claiming (`WHERE status='pending'`) in the worker ensures a reconciler re-publish of a step that recovered on its own is safely ignored.
+   - If `retry_count >= MAX_RETRIES` → mark step `failed`, mark run `failed`
+   - Otherwise → reset to `pending`, re-publish to RabbitMQ
 
 ---
 
-## Key Design Decisions & Tradeoffs
+## Key Design Decisions
 
-### Message Queue: RabbitMQ over Kafka
-Kafka was the original choice but was replaced with RabbitMQ. Kafka is an event streaming platform built for massive throughput and message replay — neither of which Relay needs. Steps are already durably stored in Postgres, so replay is redundant. RabbitMQ is a simpler task queue that fits the use case exactly: deliver one message to one worker, done. Easier to run locally, lower operational overhead.
+### Worker is the unit, not the workflow
+In v1, a workflow was the top-level concept. Users submitted one-shot requests. In v2, the worker is permanent. Workflow runs are ephemeral executions created by the scheduler. This gives users a persistent entity to own, configure, and observe over time.
 
-### No Queue vs Queue
-A queue is justified specifically for **horizontal worker scaling independent of the API server**. The API server is lightweight (validates input, returns workflow ID). Workers are heavy (execute steps that take 5-30 seconds each). A queue lets you run N worker goroutines without touching the API server. Without a queue, you'd manage goroutine pools and backpressure yourself.
+### Memory via injected state, not agent loop
+The worker doesn't "remember" by being kept alive in memory or by making inference calls between runs. It reads a JSON blob from Postgres before planning and writes an updated blob at the end. Simple, durable, inspectable.
 
-### One Binary vs Two
-The API server, planner, and agent layer are grouped into one binary because every request flows through all three sequentially — they scale together. Workers are a separate binary because they scale independently based on step execution load.
+### Dedicated job_search over generic web search
+Generic web search returns job board index pages. ATS APIs (Greenhouse, Ashby, Lever) return structured job data. The quality difference is large enough to justify a dedicated tool.
 
-### Agent Role: Planner Only
-The agent (Claude) is responsible for one thing only: generating the initial step plan. It does not execute steps and is not called on failure in v1. Execution is done entirely by workers calling tools directly. This keeps Claude calls minimal (one per workflow creation) and keeps workers fast and deterministic.
+### Dedup by (company_id, job_id), not just job_id
+Same job can appear on multiple sources. The unique identifier is the combination of ATS company slug and job ID within that ATS.
 
-### Step Input Resolution: Template Interpolation
-Claude front-loads all intelligence at plan-generation time by encoding step dependencies as template references (e.g. `{{steps[1].output.results}}`). Workers resolve these at execution time by reading from Postgres. This avoids a Claude call per step execution, which would be slow and expensive (10 steps = 10 Claude calls). The tradeoff is that Claude must know tool output shapes upfront — enforced by including response schemas in tool descriptions.
+### Agent has one job: generate the plan
+Claude is called once per run to produce a step plan. It does not execute steps, does not make decisions mid-execution, and is not called on failure. Workers are deterministic executors. This keeps Claude calls minimal (one per run) and workers fast and stateless.
 
-### Storage as Source of Truth
-All state — workflow status, step inputs, step outputs, errors — lives in Postgres. RabbitMQ messages are intentionally thin (just IDs). This means workers are stateless: they can crash and restart without losing anything. It also means the worker directly updates step state rather than routing through the planner, keeping the architecture simple.
-
-### Workflow vs Step State Ownership
-Workers own all step state transitions. Workers also own workflow terminal state transitions (`success`, `failed`) — they check for remaining pending steps after each step completes and mark the workflow accordingly. The planner exclusively owns the `init` → `processing` transition. This gives clear, non-overlapping ownership with no ambiguity.
+### Postgres as source of truth
+RabbitMQ carries thin events (just IDs). All state — run status, step inputs, step outputs, errors, worker memory — lives in Postgres. Workers are stateless and can crash safely.
 
 ---
 
-## Future Ideas
+## Future Layers (not v1, but planned)
 
-### Scheduled Workflows
-Allow workflows to be submitted with a cron expression (e.g. "every morning at 10 EST"). A scheduler cron running in the planner binary picks up due schedules and creates a new workflow run. Requires a `schedules` table with cron expression, command, and `next_run_at`. Behaviour when the server was down and a run was missed (catch up vs skip) needs to be decided.
+### Vector Memory
+Replace `worker_state` JSONB with proper RAG. Embed past run outputs, retrieve semantically relevant context at planning time. "What jobs did I see that were similar to this one?" becomes a vector search, not a JSON lookup.
 
-### Document Attachment
-Allow users to attach a document (e.g. a resume or profile) when submitting a command, so Claude can use it as context during plan generation. The document content would be injected into the planning prompt at submission time. Requires file upload support on `POST /workflows` and storage (local or S3).
+### Observability
+Trace every planning prompt, every tool call input/output, every token used. Store as structured spans in Postgres or a time-series store. Build a dashboard showing agent decisions over time.
 
-### Job Deduplication
-For job-search workflows, add a `seen_jobs` table that tracks job identifiers (URL or hash of title+company) already fetched and posted. Before posting, filter out anything already in `seen_jobs`. This prevents recurring scheduled workflows from reposting the same listings across runs.
+### Rate Limiting + Backpressure
+When 100 workers fire simultaneously, the system needs to degrade gracefully. Rate limit Claude API calls per user, queue overflow, and handle tool rate limits (Greenhouse API limits).
 
-### Intelligent Failure Recovery
-When a step fails after all retries are exhausted, instead of immediately marking the workflow failed, call the agent with full context — the original command, all completed steps and their outputs, the failed step and its error message — and ask it to generate replacement steps. Open questions to resolve before implementing: how Claude signals it cannot recover, how `step_number` is adjusted for replacement steps, and whether there should be a cap on recovery attempts per workflow.
+### Evaluation
+How do you know if the job hunter is getting better or worse? Build a lightweight eval framework on top of execution traces — score outputs against expected results, track quality over time.
 
-### Semantic Caching
-For repeated similar commands, the planning step (Claude call) could be skipped by caching the generated step plan in Redis and retrieving it via semantic similarity (vector embeddings). Only the plan is cached — workers still execute fresh. A natural next optimisation to reduce latency and cost once v1 is stable.
+### Notifications
+After a run completes, send output to the user. Email first (simplest), then Slack webhook, then in-app. Implemented as a `notify` tool step at the end of each plan.
+
+### Worker Pause/Resume
+Workers have `status: active | paused | archived`. Paused workers skip scheduler triggers but retain all memory and history.
