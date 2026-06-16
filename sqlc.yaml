@@ -10,7 +10,7 @@ sql:
         package: "sqlc"
         emit_json_tags: true
         overrides:
-          - db_type: "workflow_status"
+          - db_type: "run_status"
             go_type:
               import: "github.com/gautamsardana/relay/internal/models"
               package: "models"

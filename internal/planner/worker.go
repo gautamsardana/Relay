@@ -2,23 +2,39 @@ package planner
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/gautamsardana/relay/internal/models"
 )
 
-func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions, schedule, resumeURL string) (models.Worker, error) {
+// minIntervalSeconds is the smallest schedule interval we accept. The frontend
+// enforces this for UX; we re-check here to guard against bad actors hitting the
+// API directly.
+const minIntervalSeconds = 3600 // 1 hour
+
+func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeURL string) (models.Worker, error) {
+	if intervalSeconds < minIntervalSeconds {
+		return models.Worker{}, fmt.Errorf("interval must be at least %d seconds (1 hour), got %d", minIntervalSeconds, intervalSeconds)
+	}
+
 	id, _ := uuid.NewV7()
 
+	// First automatic run is one interval from now. Users who want immediate
+	// feedback use the manual "Run now" trigger, which doesn't touch the schedule.
+	nextRunAt := time.Now().Add(time.Duration(intervalSeconds) * time.Second)
+
 	worker := &models.Worker{
-		WorkerID:     id.String(),
-		UserID:       userID,
-		Name:         name,
-		Instructions: instructions,
-		Schedule:     schedule,
-		Status:       models.WorkerStatusActive,
-		ResumeURL:    resumeURL,
+		WorkerID:        id.String(),
+		UserID:          userID,
+		Name:            name,
+		Instructions:    instructions,
+		IntervalSeconds: intervalSeconds,
+		Status:          models.WorkerStatusActive,
+		ResumeURL:       resumeURL,
+		NextRunAt:       &nextRunAt,
 	}
 
 	return p.store.CreateWorker(ctx, worker)

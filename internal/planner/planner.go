@@ -31,7 +31,7 @@ func New(cfg *config.Config, s *store.Store, q *queue.QueueManager, a *agent.Age
 	}
 }
 
-// CreateRun starts a new workflow_run for the given worker: it persists the
+// CreateRun starts a new run for the given worker: it persists the
 // run, then asynchronously plans and publishes its first step.
 func (p *Planner) CreateRun(ctx context.Context, workerID string) (string, error) {
 	worker, err := p.store.GetWorkerByID(ctx, workerID)

@@ -14,14 +14,58 @@ import (
 	models "github.com/gautamsardana/relay/internal/models"
 )
 
+type RunStatus string
+
+const (
+	RunStatusInit       RunStatus = "init"
+	RunStatusProcessing RunStatus = "processing"
+	RunStatusSuccess    RunStatus = "success"
+	RunStatusFailed     RunStatus = "failed"
+)
+
+func (e *RunStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RunStatus(s)
+	case string:
+		*e = RunStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RunStatus: %T", src)
+	}
+	return nil
+}
+
+type NullRunStatus struct {
+	RunStatus RunStatus `json:"run_status"`
+	Valid     bool      `json:"valid"` // Valid is true if RunStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRunStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.RunStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RunStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRunStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RunStatus), nil
+}
+
 type StepStatus string
 
 const (
+	StepStatusInit       StepStatus = "init"
 	StepStatusPending    StepStatus = "pending"
 	StepStatusProcessing StepStatus = "processing"
 	StepStatusSuccess    StepStatus = "success"
 	StepStatusFailed     StepStatus = "failed"
-	StepStatusInit       StepStatus = "init"
 	StepStatusCancelled  StepStatus = "cancelled"
 )
 
@@ -103,48 +147,13 @@ func (ns NullWorkerStatus) Value() (driver.Value, error) {
 	return string(ns.WorkerStatus), nil
 }
 
-type WorkflowStatus string
-
-const (
-	WorkflowStatusInit       WorkflowStatus = "init"
-	WorkflowStatusProcessing WorkflowStatus = "processing"
-	WorkflowStatusSuccess    WorkflowStatus = "success"
-	WorkflowStatusFailed     WorkflowStatus = "failed"
-)
-
-func (e *WorkflowStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = WorkflowStatus(s)
-	case string:
-		*e = WorkflowStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for WorkflowStatus: %T", src)
-	}
-	return nil
-}
-
-type NullWorkflowStatus struct {
-	WorkflowStatus WorkflowStatus `json:"workflow_status"`
-	Valid          bool           `json:"valid"` // Valid is true if WorkflowStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullWorkflowStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.WorkflowStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.WorkflowStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullWorkflowStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.WorkflowStatus), nil
+type Run struct {
+	RunID      string           `json:"run_id"`
+	WorkerID   string           `json:"worker_id"`
+	Status     models.RunStatus `json:"status"`
+	Error      sql.NullString   `json:"error"`
+	StartedAt  time.Time        `json:"started_at"`
+	FinishedAt sql.NullTime     `json:"finished_at"`
 }
 
 type SeenJob struct {
@@ -177,23 +186,14 @@ type User struct {
 }
 
 type Worker struct {
-	WorkerID     string         `json:"worker_id"`
-	UserID       string         `json:"user_id"`
-	Name         string         `json:"name"`
-	Instructions string         `json:"instructions"`
-	Schedule     string         `json:"schedule"`
-	Status       WorkerStatus   `json:"status"`
-	ResumeUrl    sql.NullString `json:"resume_url"`
-	NextRunAt    sql.NullTime   `json:"next_run_at"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-}
-
-type WorkflowRun struct {
-	RunID      string           `json:"run_id"`
-	WorkerID   string           `json:"worker_id"`
-	Status     models.RunStatus `json:"status"`
-	Error      sql.NullString   `json:"error"`
-	StartedAt  time.Time        `json:"started_at"`
-	FinishedAt sql.NullTime     `json:"finished_at"`
+	WorkerID        string         `json:"worker_id"`
+	UserID          string         `json:"user_id"`
+	Name            string         `json:"name"`
+	Instructions    string         `json:"instructions"`
+	IntervalSeconds int32          `json:"interval_seconds"`
+	Status          WorkerStatus   `json:"status"`
+	ResumeUrl       sql.NullString `json:"resume_url"`
+	NextRunAt       sql.NullTime   `json:"next_run_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }

@@ -66,7 +66,7 @@ func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 		UserID       string `json:"user_id"`
 		Name         string `json:"name"`
 		Instructions string `json:"instructions"`
-		Schedule     string `json:"schedule"`
+		IntervalHours int   `json:"interval_hours"`
 		ResumeURL    string `json:"resume_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -74,10 +74,10 @@ func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.Schedule, req.ResumeURL)
+	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeURL)
 	if err != nil {
 		slog.Error("api/CreateWorker", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	json.NewEncoder(w).Encode(worker)

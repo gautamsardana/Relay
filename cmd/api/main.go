@@ -44,6 +44,7 @@ func main() {
 
 	planner := planner.New(config, store, plannerQueue, agent, registry)
 	planner.StartReconciler()
+	planner.StartScheduler()
 
 	server := api.New(planner)
 	server.ListenAndServe()

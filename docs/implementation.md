@@ -24,8 +24,8 @@ The execution engine is complete and working:
 **What is stubbed / incomplete:**
 - Agent `GeneratePlan` implementations return nil (no real prompts yet)
 - `ListWorkflows` and `GetWorkflow` handlers return empty
-- No reconciler
-- No scheduler
+- ~~No reconciler~~ (done)
+- ~~No scheduler~~ (done — interval-based, Phase 3)
 - No template interpolation in step inputs
 - No retry logic in worker
 
@@ -196,20 +196,40 @@ GET    /ws/runs/:id          → WebSocket live step updates
 
 ---
 
-## Phase 3 — Scheduler
+## Phase 3 — Scheduler ✅ (interval-based)
 
 **File:** `internal/planner/scheduler.go`
 
-Cron running inside the API binary every 60 seconds.
+**Done.** Shipped as a simple **interval scheduler**, not cron. Calendar
+scheduling ("Mondays at 9am", timezones) is deferred — when added, introduce a
+`schedule_kind` discriminator + a cron column and keep interval workers working
+untouched. Because scheduling is interval-only, `robfig/cron/v3` was **not**
+needed.
 
-Logic:
-1. `SELECT * FROM workers WHERE status='active' AND next_run_at <= NOW()`
-2. For each worker: call `planner.CreateRun(workerID)`
-3. Update `next_run_at` by parsing the cron expression and computing the next fire time
+**Data model change:** `workers.schedule TEXT` → `workers.interval_seconds INT NOT NULL`
+(model field `IntervalSeconds int`). Stored in seconds for future flexibility
+(minutes later is free); the API currently accepts `interval_hours`.
 
-Use a cron expression parser library (e.g. `github.com/robfig/cron/v3`).
+A ticker runs inside the API binary every 60 seconds:
+1. `ListDueWorkers` — `SELECT * FROM workers WHERE status='active' AND next_run_at <= NOW()`
+2. For each worker: `planner.CreateRun(workerID)`
+3. Advance `next_run_at = now + interval_seconds` (done even if `CreateRun`
+   errors, so a failing worker doesn't hot-loop every tick)
 
-Wire into `cmd/api/main.go`.
+Wired into `cmd/api/main.go` next to `StartReconciler()`.
+
+**Validation:** minimum interval enforced at **1 hour** (`minIntervalSeconds = 3600`)
+in `planner.CreateWorker` — the frontend enforces it for UX, the backend
+re-checks for bad actors (returns 400).
+
+**On create:** `next_run_at = now + interval`, so the first *automatic* run is one
+interval out. Immediate feedback comes from the manual **Run Now** trigger
+(`POST /workers/{id}/run` → `CreateRun`), which fires a run and never touches
+`next_run_at` — fully decoupled from the schedule.
+
+**Known limitation:** assumes a **single API instance**. Multiple instances would
+double-fire due workers until we add an atomic claim
+(`UPDATE ... WHERE next_run_at <= NOW() ... RETURNING` / `FOR UPDATE SKIP LOCKED`).
 
 ---
 

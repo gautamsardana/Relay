@@ -13,7 +13,7 @@ import (
 )
 
 const createRun = `-- name: CreateRun :one
-INSERT INTO workflow_runs (run_id, worker_id, status)
+INSERT INTO runs (run_id, worker_id, status)
 VALUES ($1, $2, $3)
 RETURNING run_id, worker_id, status, error, started_at, finished_at
 `
@@ -24,9 +24,9 @@ type CreateRunParams struct {
 	Status   models.RunStatus `json:"status"`
 }
 
-func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (WorkflowRun, error) {
+func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, error) {
 	row := q.db.QueryRowContext(ctx, createRun, arg.RunID, arg.WorkerID, arg.Status)
-	var i WorkflowRun
+	var i Run
 	err := row.Scan(
 		&i.RunID,
 		&i.WorkerID,
@@ -40,13 +40,13 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (WorkflowR
 
 const getRunByID = `-- name: GetRunByID :one
 SELECT run_id, worker_id, status, error, started_at, finished_at
-FROM workflow_runs
+FROM runs
 WHERE run_id = $1
 `
 
-func (q *Queries) GetRunByID(ctx context.Context, runID string) (WorkflowRun, error) {
+func (q *Queries) GetRunByID(ctx context.Context, runID string) (Run, error) {
 	row := q.db.QueryRowContext(ctx, getRunByID, runID)
-	var i WorkflowRun
+	var i Run
 	err := row.Scan(
 		&i.RunID,
 		&i.WorkerID,
@@ -60,20 +60,20 @@ func (q *Queries) GetRunByID(ctx context.Context, runID string) (WorkflowRun, er
 
 const listRunsByWorker = `-- name: ListRunsByWorker :many
 SELECT run_id, worker_id, status, error, started_at, finished_at
-FROM workflow_runs
+FROM runs
 WHERE worker_id = $1
 ORDER BY started_at DESC
 `
 
-func (q *Queries) ListRunsByWorker(ctx context.Context, workerID string) ([]WorkflowRun, error) {
+func (q *Queries) ListRunsByWorker(ctx context.Context, workerID string) ([]Run, error) {
 	rows, err := q.db.QueryContext(ctx, listRunsByWorker, workerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []WorkflowRun
+	var items []Run
 	for rows.Next() {
-		var i WorkflowRun
+		var i Run
 		if err := rows.Scan(
 			&i.RunID,
 			&i.WorkerID,
@@ -96,18 +96,20 @@ func (q *Queries) ListRunsByWorker(ctx context.Context, workerID string) ([]Work
 }
 
 const updateRunStatus = `-- name: UpdateRunStatus :exec
-UPDATE workflow_runs
-SET status = $2, error = $3, finished_at = CASE WHEN $2 IN ('success', 'failed') THEN NOW() ELSE NULL END
-WHERE run_id = $1
+UPDATE runs
+SET status = $1::run_status,
+    error = $2,
+    finished_at = CASE WHEN $1::run_status IN ('success', 'failed') THEN NOW() ELSE NULL END
+WHERE run_id = $3
 `
 
 type UpdateRunStatusParams struct {
-	RunID  string           `json:"run_id"`
 	Status models.RunStatus `json:"status"`
 	Error  sql.NullString   `json:"error"`
+	RunID  string           `json:"run_id"`
 }
 
 func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) error {
-	_, err := q.db.ExecContext(ctx, updateRunStatus, arg.RunID, arg.Status, arg.Error)
+	_, err := q.db.ExecContext(ctx, updateRunStatus, arg.Status, arg.Error, arg.RunID)
 	return err
 }

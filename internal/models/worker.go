@@ -11,14 +11,14 @@ const (
 )
 
 type Worker struct {
-	WorkerID     string
-	UserID       string
-	Name         string
-	Instructions string
-	Schedule     string
-	Status       WorkerStatus
-	ResumeURL    string
-	NextRunAt    *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	WorkerID        string
+	UserID          string
+	Name            string
+	Instructions    string
+	IntervalSeconds int
+	Status          WorkerStatus
+	ResumeURL       string
+	NextRunAt       *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }

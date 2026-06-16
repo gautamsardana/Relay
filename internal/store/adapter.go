@@ -121,16 +121,16 @@ func toModelWorker(sw *sqlc.Worker) models.Worker {
 		nextRunAt = &sw.NextRunAt.Time
 	}
 	return models.Worker{
-		WorkerID:     sw.WorkerID,
-		UserID:       sw.UserID,
-		Name:         sw.Name,
-		Instructions: sw.Instructions,
-		Schedule:     sw.Schedule,
-		Status:       models.WorkerStatus(sw.Status),
-		ResumeURL:    sw.ResumeUrl.String,
-		NextRunAt:    nextRunAt,
-		CreatedAt:    sw.CreatedAt,
-		UpdatedAt:    sw.UpdatedAt,
+		WorkerID:        sw.WorkerID,
+		UserID:          sw.UserID,
+		Name:            sw.Name,
+		Instructions:    sw.Instructions,
+		IntervalSeconds: int(sw.IntervalSeconds),
+		Status:          models.WorkerStatus(sw.Status),
+		ResumeURL:       sw.ResumeUrl.String,
+		NextRunAt:       nextRunAt,
+		CreatedAt:       sw.CreatedAt,
+		UpdatedAt:       sw.UpdatedAt,
 	}
 }
 
@@ -140,14 +140,14 @@ func fromModelWorkerCreate(mw *models.Worker) sqlc.CreateWorkerParams {
 		nextRunAt = sql.NullTime{Time: *mw.NextRunAt, Valid: true}
 	}
 	return sqlc.CreateWorkerParams{
-		WorkerID:     mw.WorkerID,
-		UserID:       mw.UserID,
-		Name:         mw.Name,
-		Instructions: mw.Instructions,
-		Schedule:     mw.Schedule,
-		Status:       sqlc.WorkerStatus(mw.Status),
-		ResumeUrl:    sql.NullString{String: mw.ResumeURL, Valid: mw.ResumeURL != ""},
-		NextRunAt:    nextRunAt,
+		WorkerID:        mw.WorkerID,
+		UserID:          mw.UserID,
+		Name:            mw.Name,
+		Instructions:    mw.Instructions,
+		IntervalSeconds: int32(mw.IntervalSeconds),
+		Status:          sqlc.WorkerStatus(mw.Status),
+		ResumeUrl:       sql.NullString{String: mw.ResumeURL, Valid: mw.ResumeURL != ""},
+		NextRunAt:       nextRunAt,
 	}
 }
 
@@ -164,7 +164,7 @@ func fromTimePtr(t *time.Time) sql.NullTime {
 
 // --- Run ---
 
-func toModelRun(sr *sqlc.WorkflowRun) models.Run {
+func toModelRun(sr *sqlc.Run) models.Run {
 	if sr == nil {
 		return models.Run{}
 	}

@@ -5,7 +5,7 @@ CREATE TABLE workers (
     user_id      UUID NOT NULL REFERENCES users(user_id),
     name         TEXT NOT NULL,
     instructions TEXT NOT NULL,
-    schedule     TEXT NOT NULL,
+    interval_seconds INT NOT NULL,
     status       worker_status NOT NULL DEFAULT 'active',
     resume_url   TEXT,
     next_run_at  TIMESTAMPTZ,

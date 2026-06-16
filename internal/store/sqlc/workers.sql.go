@@ -11,20 +11,20 @@ import (
 )
 
 const createWorker = `-- name: CreateWorker :one
-INSERT INTO workers (worker_id, user_id, name, instructions, schedule, status, resume_url, next_run_at)
+INSERT INTO workers (worker_id, user_id, name, instructions, interval_seconds, status, resume_url, next_run_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING worker_id, user_id, name, instructions, schedule, status, resume_url, next_run_at, created_at, updated_at
+RETURNING worker_id, user_id, name, instructions, interval_seconds, status, resume_url, next_run_at, created_at, updated_at
 `
 
 type CreateWorkerParams struct {
-	WorkerID     string         `json:"worker_id"`
-	UserID       string         `json:"user_id"`
-	Name         string         `json:"name"`
-	Instructions string         `json:"instructions"`
-	Schedule     string         `json:"schedule"`
-	Status       WorkerStatus   `json:"status"`
-	ResumeUrl    sql.NullString `json:"resume_url"`
-	NextRunAt    sql.NullTime   `json:"next_run_at"`
+	WorkerID        string         `json:"worker_id"`
+	UserID          string         `json:"user_id"`
+	Name            string         `json:"name"`
+	Instructions    string         `json:"instructions"`
+	IntervalSeconds int32          `json:"interval_seconds"`
+	Status          WorkerStatus   `json:"status"`
+	ResumeUrl       sql.NullString `json:"resume_url"`
+	NextRunAt       sql.NullTime   `json:"next_run_at"`
 }
 
 func (q *Queries) CreateWorker(ctx context.Context, arg CreateWorkerParams) (Worker, error) {
@@ -33,7 +33,7 @@ func (q *Queries) CreateWorker(ctx context.Context, arg CreateWorkerParams) (Wor
 		arg.UserID,
 		arg.Name,
 		arg.Instructions,
-		arg.Schedule,
+		arg.IntervalSeconds,
 		arg.Status,
 		arg.ResumeUrl,
 		arg.NextRunAt,
@@ -44,7 +44,7 @@ func (q *Queries) CreateWorker(ctx context.Context, arg CreateWorkerParams) (Wor
 		&i.UserID,
 		&i.Name,
 		&i.Instructions,
-		&i.Schedule,
+		&i.IntervalSeconds,
 		&i.Status,
 		&i.ResumeUrl,
 		&i.NextRunAt,
@@ -55,7 +55,7 @@ func (q *Queries) CreateWorker(ctx context.Context, arg CreateWorkerParams) (Wor
 }
 
 const getWorkerByID = `-- name: GetWorkerByID :one
-SELECT worker_id, user_id, name, instructions, schedule, status, resume_url, next_run_at, created_at, updated_at
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_url, next_run_at, created_at, updated_at
 FROM workers
 WHERE worker_id = $1
 `
@@ -68,7 +68,7 @@ func (q *Queries) GetWorkerByID(ctx context.Context, workerID string) (Worker, e
 		&i.UserID,
 		&i.Name,
 		&i.Instructions,
-		&i.Schedule,
+		&i.IntervalSeconds,
 		&i.Status,
 		&i.ResumeUrl,
 		&i.NextRunAt,
@@ -79,7 +79,7 @@ func (q *Queries) GetWorkerByID(ctx context.Context, workerID string) (Worker, e
 }
 
 const listDueWorkers = `-- name: ListDueWorkers :many
-SELECT worker_id, user_id, name, instructions, schedule, status, resume_url, next_run_at, created_at, updated_at
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_url, next_run_at, created_at, updated_at
 FROM workers
 WHERE status = 'active' AND next_run_at <= NOW()
 `
@@ -98,7 +98,7 @@ func (q *Queries) ListDueWorkers(ctx context.Context) ([]Worker, error) {
 			&i.UserID,
 			&i.Name,
 			&i.Instructions,
-			&i.Schedule,
+			&i.IntervalSeconds,
 			&i.Status,
 			&i.ResumeUrl,
 			&i.NextRunAt,
@@ -119,7 +119,7 @@ func (q *Queries) ListDueWorkers(ctx context.Context) ([]Worker, error) {
 }
 
 const listWorkersByUser = `-- name: ListWorkersByUser :many
-SELECT worker_id, user_id, name, instructions, schedule, status, resume_url, next_run_at, created_at, updated_at
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_url, next_run_at, created_at, updated_at
 FROM workers
 WHERE user_id = $1
 ORDER BY created_at DESC
@@ -139,7 +139,7 @@ func (q *Queries) ListWorkersByUser(ctx context.Context, userID string) ([]Worke
 			&i.UserID,
 			&i.Name,
 			&i.Instructions,
-			&i.Schedule,
+			&i.IntervalSeconds,
 			&i.Status,
 			&i.ResumeUrl,
 			&i.NextRunAt,
