@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gautamsardana/relay/internal/models"
-	"github.com/gautamsardana/relay/internal/store/sqlc"
 )
 
 func (s *Store) InsertSteps(ctx context.Context, ms []models.Step) error {
@@ -30,8 +29,8 @@ func (s *Store) InsertSteps(ctx context.Context, ms []models.Step) error {
 }
 
 
-func (s *Store) ListStepsByWorkflow(ctx context.Context, workflowID string) ([]models.Step, error) {
-	steps, err := s.queries.ListStepsByWorkflow(ctx, workflowID)
+func (s *Store) ListStepsByRun(ctx context.Context, runID string) ([]models.Step, error) {
+	steps, err := s.queries.ListStepsByRun(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -63,9 +62,7 @@ func (s *Store) ClaimStep(ctx context.Context, stepID string) (models.Step, bool
 }
 
 func (s *Store) GetStuckSteps(ctx context.Context, timeout time.Duration) ([]models.Step, error) {
-	// Postgres interval syntax: '5 minutes', '1 hour', etc.
-	interval := fmt.Sprintf("%d seconds", int(timeout.Seconds()))
-	rows, err := s.queries.GetStuckSteps(ctx, interval)
+	rows, err := s.queries.GetStuckSteps(ctx, int32(timeout.Seconds()))
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +74,8 @@ func (s *Store) GetStuckSteps(ctx context.Context, timeout time.Duration) ([]mod
 	return steps, nil
 }
 
-func (s *Store) CancelUnstartedSteps(ctx context.Context, workflowID string, reason string) error {
-	return s.queries.CancelUnstartedSteps(ctx, sqlc.CancelUnstartedStepsParams{
-		WorkflowID: workflowID,
-		Error:      reason,
-	})
+func (s *Store) CancelUnstartedSteps(ctx context.Context, runID string, reason string) error {
+	return s.queries.CancelUnstartedSteps(ctx, fromModelCancelUnstartedSteps(runID, reason))
 }
 
 func (s *Store) MarkStepPending(ctx context.Context, stepID string) error {
@@ -101,8 +95,8 @@ func (s *Store) UpdateStepAsCompleted(ctx context.Context, stepID string, output
 	return err
 }
 
-func (s *Store) GetStepByWorkflowAndNumber(ctx context.Context, workflowID string, stepNumber int) (models.Step, bool, error) {
-	step, err := s.queries.GetStepByWorkflowAndNumber(ctx, fromWorkflowStepNumber(workflowID, int32(stepNumber)))
+func (s *Store) GetStepByRunAndNumber(ctx context.Context, runID string, stepNumber int) (models.Step, bool, error) {
+	step, err := s.queries.GetStepByRunAndNumber(ctx, fromRunStepNumber(runID, int32(stepNumber)))
 	if err == sql.ErrNoRows {
 		return models.Step{}, false, nil
 	}

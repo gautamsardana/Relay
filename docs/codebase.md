@@ -11,7 +11,7 @@ This document is a map of the codebase as it exists today. Read this when you wa
 ```
 cmd/
   api/main.go          — boots the API server, planner, agent manager, tool registry
-  worker/main.go       — boots the RabbitMQ consumer with N goroutines
+  executor/main.go     — boots the RabbitMQ consumer with N goroutines
 
 internal/
   agent/
@@ -87,7 +87,7 @@ main.go
   └── api.New(planner)      — chi router, starts HTTP on :8080
 ```
 
-### Worker Binary (`cmd/worker`)
+### Executor Binary (`cmd/executor`)
 
 ```
 main.go
@@ -95,7 +95,7 @@ main.go
   ├── store.New()
   ├── queue.Dial()
   ├── tools.NewRegistry()
-  └── worker.New() → worker.SpawnWorkers()
+  └── executor.New() → executor.SpawnExecutors()
         └── N goroutines, each:
               queue.New() → qm.ConsumeSteps(w.HandleStep)
 ```
@@ -118,7 +118,7 @@ POST /workflow
 ### Executing a Step
 
 ```
-queue.ConsumeSteps → worker.HandleStep(event)
+queue.ConsumeSteps → executor.HandleStep(event)
   ├── store.GetStepByID
   ├── store.UpdateStepStatus            (status: processing)
   ├── registry.Get(step.Tool)

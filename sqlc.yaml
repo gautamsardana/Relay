@@ -14,7 +14,7 @@ sql:
             go_type:
               import: "github.com/gautamsardana/relay/internal/models"
               package: "models"
-              type: "WorkflowStatus"
+              type: "RunStatus"
           - db_type: "step_status"
             go_type:
               import: "github.com/gautamsardana/relay/internal/models"

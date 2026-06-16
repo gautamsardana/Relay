@@ -22,10 +22,9 @@ func (s *Server) ListenAndServe() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Post("/workflow", s.CreateWorkflow)
-	r.Get("/workflows", s.ListWorkflows)
-	r.Get("/workflows/{id}", s.GetWorkflow)
-	r.Get("/ws/workflows/{id}", s.StreamWorkflowSteps)
+	r.Post("/workers/{id}/run", s.CreateRun)
+	r.Get("/runs/{id}", s.GetRun)
+	r.Get("/ws/runs/{id}", s.StreamRunSteps)
 
 	// Serve static UI from /web at the root path.
 	r.Handle("/*", http.FileServer(http.Dir("./web")))

@@ -1,13 +1,13 @@
 -- name: CreateStep :one
-INSERT INTO steps (step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error)
+INSERT INTO steps (step_id, run_id, step_number, tool, description, input, output, status, retry_count, error)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at;
+RETURNING step_id, run_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at;
 
 
--- name: ListStepsByWorkflow :many
-SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
+-- name: ListStepsByRun :many
+SELECT step_id, run_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
 FROM steps
-WHERE workflow_id = $1
+WHERE run_id = $1
 ORDER BY step_number ASC;
 
 -- name: UpdateStepStatus :exec
@@ -19,17 +19,17 @@ WHERE step_id = $1;
 UPDATE steps
 SET status = 'processing', updated_at = now()
 WHERE step_id = $1 AND status = 'pending'
-RETURNING step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at;
+RETURNING step_id, run_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at;
 
 -- name: GetStuckSteps :many
-SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
+SELECT step_id, run_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
 FROM steps
-WHERE status = 'processing' AND updated_at < NOW() - $1::interval;
+WHERE status = 'processing' AND updated_at < NOW() - make_interval(secs => sqlc.arg(timeout_seconds)::int);
 
 -- name: CancelUnstartedSteps :exec
 UPDATE steps
 SET status = 'cancelled', error = $2, updated_at = now()
-WHERE workflow_id = $1 AND status IN ('init', 'pending');
+WHERE run_id = $1 AND status IN ('init', 'pending');
 
 -- name: MarkStepPending :exec
 UPDATE steps
@@ -51,8 +51,8 @@ UPDATE steps
 SET status = $2, output = $3, updated_at = now()
 WHERE step_id = $1;
 
--- name: GetStepByWorkflowAndNumber :one
-SELECT step_id, workflow_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
+-- name: GetStepByRunAndNumber :one
+SELECT step_id, run_id, step_number, tool, description, input, output, status, retry_count, error, created_at, updated_at
 FROM steps
-WHERE workflow_id = $1 AND step_number = $2
+WHERE run_id = $1 AND step_number = $2
 LIMIT 1;

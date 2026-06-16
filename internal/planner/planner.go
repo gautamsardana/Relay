@@ -31,29 +31,36 @@ func New(cfg *config.Config, s *store.Store, q *queue.QueueManager, a *agent.Age
 	}
 }
 
-func (p *Planner) CreateWorkflow(ctx context.Context, requestString string) (string, error) {
-	id, _ := uuid.NewV7()
-
-	request := &models.Workflow{
-		WorkflowID: id.String(),
-		Request:    requestString,
-		Status:     models.WorkflowStatusInit,
-	}
-
-	err := p.store.CreateWorkflow(ctx, request)
+// CreateRun starts a new workflow_run for the given worker: it persists the
+// run, then asynchronously plans and publishes its first step.
+func (p *Planner) CreateRun(ctx context.Context, workerID string) (string, error) {
+	worker, err := p.store.GetWorkerByID(ctx, workerID)
 	if err != nil {
 		return "", err
 	}
 
-	go p.HandleWorkflow(request)
+	id, _ := uuid.NewV7()
 
-	return request.WorkflowID, nil
+	run := &models.Run{
+		RunID:    id.String(),
+		WorkerID: workerID,
+		Status:   models.RunStatusInit,
+	}
+
+	createdRun, err := p.store.CreateRun(ctx, run)
+	if err != nil {
+		return "", err
+	}
+
+	go p.HandleRun(worker, createdRun)
+
+	return createdRun.RunID, nil
 }
 
-func (p *Planner) GetStepsByWorkflow(ctx context.Context, workflowID string) ([]models.Step, error) {
-	return p.store.ListStepsByWorkflow(ctx, workflowID)
+func (p *Planner) GetStepsByRun(ctx context.Context, runID string) ([]models.Step, error) {
+	return p.store.ListStepsByRun(ctx, runID)
 }
 
-func (p *Planner) GetWorkflow(ctx context.Context, workflowID string) (models.Workflow, error) {
-	return p.store.GetWorkflow(ctx, workflowID)
+func (p *Planner) GetRun(ctx context.Context, runID string) (models.Run, error) {
+	return p.store.GetRunByID(ctx, runID)
 }

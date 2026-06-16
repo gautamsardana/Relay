@@ -5,7 +5,7 @@ CREATE TYPE step_status AS ENUM ('pending', 'processing', 'success', 'failed');
 
 CREATE TABLE steps (
     step_id      UUID PRIMARY KEY,
-    workflow_id  UUID NOT NULL REFERENCES workflows(workflow_id),
+    run_id       UUID NOT NULL REFERENCES workflow_runs(run_id),
     step_number  INT NOT NULL,
     tool         TEXT NOT NULL,
     description  TEXT NOT NULL,
@@ -18,5 +18,5 @@ CREATE TABLE steps (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_steps_workflow_id ON steps(workflow_id);
+CREATE INDEX idx_steps_run_id ON steps(run_id);
 CREATE INDEX idx_steps_status ON steps(status);

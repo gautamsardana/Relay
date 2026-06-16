@@ -11,8 +11,8 @@ import (
 )
 
 type StepEvent struct {
-    WorkflowID string `json:"workflow_id"`
-    StepID     string `json:"step_id"`
+    RunID  string `json:"run_id"`
+    StepID string `json:"step_id"`
 }
 
 func Dial(config *config.Config) (*amqp.Connection, error) {
@@ -65,7 +65,7 @@ func (q *QueueManager) PublishStep(ctx context.Context, event StepEvent) error {
 		return fmt.Errorf("failed to publish step event: %w", err)
 	}
 
-	slog.Info("step event published", "workflow_id", event.WorkflowID, "step_id", event.StepID)
+	slog.Info("step event published", "run_id", event.RunID, "step_id", event.StepID)
 	return nil
 }
 

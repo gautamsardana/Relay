@@ -15,7 +15,7 @@ const (
 
 type Step struct {
 	StepID      string
-	WorkflowID  string
+	RunID       string
 	StepNumber  int
 	Tool        string
 	Description string

@@ -17,11 +17,11 @@ import (
 type StepStatus string
 
 const (
-	StepStatusInit       StepStatus = "init"
 	StepStatusPending    StepStatus = "pending"
 	StepStatusProcessing StepStatus = "processing"
 	StepStatusSuccess    StepStatus = "success"
 	StepStatusFailed     StepStatus = "failed"
+	StepStatusInit       StepStatus = "init"
 	StepStatusCancelled  StepStatus = "cancelled"
 )
 
@@ -58,6 +58,49 @@ func (ns NullStepStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.StepStatus), nil
+}
+
+type WorkerStatus string
+
+const (
+	WorkerStatusActive   WorkerStatus = "active"
+	WorkerStatusPaused   WorkerStatus = "paused"
+	WorkerStatusArchived WorkerStatus = "archived"
+)
+
+func (e *WorkerStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerStatus(s)
+	case string:
+		*e = WorkerStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerStatus: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerStatus struct {
+	WorkerStatus WorkerStatus `json:"worker_status"`
+	Valid        bool         `json:"valid"` // Valid is true if WorkerStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerStatus), nil
 }
 
 type WorkflowStatus string
@@ -104,9 +147,17 @@ func (ns NullWorkflowStatus) Value() (driver.Value, error) {
 	return string(ns.WorkflowStatus), nil
 }
 
+type SeenJob struct {
+	ID        string    `json:"id"`
+	WorkerID  string    `json:"worker_id"`
+	CompanyID string    `json:"company_id"`
+	JobID     string    `json:"job_id"`
+	SeenAt    time.Time `json:"seen_at"`
+}
+
 type Step struct {
 	StepID      string            `json:"step_id"`
-	WorkflowID  string            `json:"workflow_id"`
+	RunID       string            `json:"run_id"`
 	StepNumber  int32             `json:"step_number"`
 	Tool        string            `json:"tool"`
 	Description string            `json:"description"`
@@ -119,11 +170,30 @@ type Step struct {
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
-type Workflow struct {
-	WorkflowID string                `json:"workflow_id"`
-	Request    string                `json:"request"`
-	Status     models.WorkflowStatus `json:"status"`
-	Error      sql.NullString        `json:"error"`
-	CreatedAt  time.Time             `json:"created_at"`
-	UpdatedAt  time.Time             `json:"updated_at"`
+type User struct {
+	UserID    string    `json:"user_id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Worker struct {
+	WorkerID     string         `json:"worker_id"`
+	UserID       string         `json:"user_id"`
+	Name         string         `json:"name"`
+	Instructions string         `json:"instructions"`
+	Schedule     string         `json:"schedule"`
+	Status       WorkerStatus   `json:"status"`
+	ResumeUrl    sql.NullString `json:"resume_url"`
+	NextRunAt    sql.NullTime   `json:"next_run_at"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+type WorkflowRun struct {
+	RunID      string           `json:"run_id"`
+	WorkerID   string           `json:"worker_id"`
+	Status     models.RunStatus `json:"status"`
+	Error      sql.NullString   `json:"error"`
+	StartedAt  time.Time        `json:"started_at"`
+	FinishedAt sql.NullTime     `json:"finished_at"`
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/gautamsardana/relay/internal/queue"
 	"github.com/gautamsardana/relay/internal/store"
 	"github.com/gautamsardana/relay/internal/tools"
-	"github.com/gautamsardana/relay/internal/worker"
+	"github.com/gautamsardana/relay/internal/executor"
 )
 
 func main(){
@@ -34,8 +34,8 @@ func main(){
 	registry.Register(tools.NewHTTPRequest())
 	registry.Register(tools.NewDocumentRead())
 
-	worker := worker.New(config, store, conn, registry)
-	worker.SpawnWorkers()
+	executor := executor.New(config, store, conn, registry)
+	executor.SpawnExecutors()
 
 	select{}
 }

@@ -46,7 +46,7 @@ func (p *Planner) reconcile() {
 }
 
 func (p *Planner) reconcileStep(ctx context.Context, step models.Step) {
-	slog.Warn("reconciler: recovering stuck step", "step_id", step.StepID, "workflow_id", step.WorkflowID, "retry_count", step.RetryCount)
+	slog.Warn("reconciler: recovering stuck step", "step_id", step.StepID, "run_id", step.RunID, "retry_count", step.RetryCount)
 
 	if err := p.store.IncrementStepRetryCount(ctx, step.StepID); err != nil {
 		slog.Error("reconciler: failed to increment retry count", "step_id", step.StepID, "error", err)
@@ -54,19 +54,19 @@ func (p *Planner) reconcileStep(ctx context.Context, step models.Step) {
 	}
 
 	if step.RetryCount+1 >= p.maxRetries {
-		slog.Error("reconciler: step exhausted retries, failing workflow", "step_id", step.StepID, "workflow_id", step.WorkflowID)
+		slog.Error("reconciler: step exhausted retries, failing run", "step_id", step.StepID, "run_id", step.RunID)
 		if err := p.store.UpdateStepStatus(ctx, step.StepID, models.StepStatusFailed, "step exhausted retries"); err != nil {
 			slog.Error("reconciler: failed to mark step as failed", "step_id", step.StepID, "error", err)
 		}
-		if err := p.store.UpdateWorkflowStatus(ctx, step.WorkflowID, models.WorkflowStatusFailed, "step exhausted retries"); err != nil {
-			slog.Error("reconciler: failed to mark workflow as failed", "workflow_id", step.WorkflowID, "error", err)
+		if err := p.store.UpdateRunStatus(ctx, step.RunID, models.RunStatusFailed, "step exhausted retries"); err != nil {
+			slog.Error("reconciler: failed to mark run as failed", "run_id", step.RunID, "error", err)
 		}
 		go func() {
 			bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			reason := "cancelled: step " + step.StepID + " exhausted retries"
-			if err := p.store.CancelUnstartedSteps(bgCtx, step.WorkflowID, reason); err != nil {
-				slog.Warn("reconciler: failed to cancel unstarted steps (non-critical)", "workflow_id", step.WorkflowID, "error", err)
+			if err := p.store.CancelUnstartedSteps(bgCtx, step.RunID, reason); err != nil {
+				slog.Warn("reconciler: failed to cancel unstarted steps (non-critical)", "run_id", step.RunID, "error", err)
 			}
 		}()
 		return
@@ -77,7 +77,7 @@ func (p *Planner) reconcileStep(ctx context.Context, step models.Step) {
 		return
 	}
 
-	if err := p.queue.PublishStep(ctx, queue.StepEvent{WorkflowID: step.WorkflowID, StepID: step.StepID}); err != nil {
+	if err := p.queue.PublishStep(ctx, queue.StepEvent{RunID: step.RunID, StepID: step.StepID}); err != nil {
 		slog.Error("reconciler: failed to re-publish step", "step_id", step.StepID, "error", err)
 		return
 	}
