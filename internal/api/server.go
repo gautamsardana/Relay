@@ -22,7 +22,13 @@ func (s *Server) ListenAndServe() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	r.Post("/users", s.CreateUser)
+
+	r.Post("/workers", s.CreateWorker)
+	r.Get("/workers", s.ListWorkers)
+	r.Get("/workers/{id}", s.GetWorker)
 	r.Post("/workers/{id}/run", s.CreateRun)
+
 	r.Get("/runs/{id}", s.GetRun)
 	r.Get("/ws/runs/{id}", s.StreamRunSteps)
 
