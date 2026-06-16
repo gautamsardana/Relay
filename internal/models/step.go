@@ -5,15 +5,17 @@ import "time"
 type StepStatus string
 
 const (
+	StepStatusInit       StepStatus = "init"
 	StepStatusPending    StepStatus = "pending"
 	StepStatusProcessing StepStatus = "processing"
 	StepStatusSuccess    StepStatus = "success"
 	StepStatusFailed     StepStatus = "failed"
+	StepStatusCancelled  StepStatus = "cancelled"
 )
 
 type Step struct {
 	StepID      string
-	WorkflowID  string
+	RunID       string
 	StepNumber  int
 	Tool        string
 	Description string

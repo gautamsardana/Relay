@@ -12,7 +12,7 @@ import (
 	"github.com/gautamsardana/relay/internal/models"
 )
 
-var workflowUpgrader = websocket.Upgrader{
+var runUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -36,7 +36,7 @@ type stepResult struct {
 
 type stepUpdateItem struct {
 	StepID      string            `json:"step_id"`
-	WorkflowID  string            `json:"workflow_id"`
+	RunID       string            `json:"run_id"`
 	StepNumber  int               `json:"step_number"`
 	Tool        string            `json:"tool"`
 	Description string            `json:"description"`
@@ -46,22 +46,22 @@ type stepUpdateItem struct {
 }
 
 type stepUpdatePayload struct {
-	WorkflowID     string                `json:"workflow_id"`
-	WorkflowStatus models.WorkflowStatus `json:"workflow_status"`
-	WorkflowError  string                `json:"workflow_error,omitempty"`
-	Steps          []stepUpdateItem      `json:"steps"`
-	Completed      bool                  `json:"completed"`
-	Summary        *stepUpdateSummary    `json:"summary,omitempty"`
+	RunID     string             `json:"run_id"`
+	RunStatus models.RunStatus   `json:"run_status"`
+	RunError  string             `json:"run_error,omitempty"`
+	Steps     []stepUpdateItem   `json:"steps"`
+	Completed bool               `json:"completed"`
+	Summary   *stepUpdateSummary `json:"summary,omitempty"`
 }
 
-func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
-	workflowID := chi.URLParam(r, "id")
-	if workflowID == "" {
-		http.Error(w, "missing workflow id", http.StatusBadRequest)
+func (s *Server) StreamRunSteps(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "id")
+	if runID == "" {
+		http.Error(w, "missing run id", http.StatusBadRequest)
 		return
 	}
 
-	conn, err := workflowUpgrader.Upgrade(w, r, nil)
+	conn, err := runUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
@@ -79,13 +79,13 @@ func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			workflow, err := s.planner.GetWorkflow(ctx, workflowID)
+			run, err := s.planner.GetRun(ctx, runID)
 			if err != nil {
 				_ = conn.WriteJSON(map[string]string{"error": err.Error()})
 				return
 			}
 
-			steps, err := s.planner.GetStepsByWorkflow(ctx, workflowID)
+			steps, err := s.planner.GetStepsByRun(ctx, runID)
 			if err != nil {
 				_ = conn.WriteJSON(map[string]string{"error": err.Error()})
 				return
@@ -95,7 +95,7 @@ func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
 			for _, step := range steps {
 				stepItems = append(stepItems, stepUpdateItem{
 					StepID:      step.StepID,
-					WorkflowID:  step.WorkflowID,
+					RunID:       step.RunID,
 					StepNumber:  step.StepNumber,
 					Tool:        step.Tool,
 					Description: step.Description,
@@ -106,17 +106,17 @@ func (s *Server) StreamWorkflowSteps(w http.ResponseWriter, r *http.Request) {
 			}
 
 			stepsCompleted, summary := summarizeSteps(steps)
-			completed := workflow.Status == models.WorkflowStatusSuccess || workflow.Status == models.WorkflowStatusFailed
-			if workflow.Status == models.WorkflowStatusProcessing && stepsCompleted {
+			completed := run.Status == models.RunStatusSuccess || run.Status == models.RunStatusFailed
+			if run.Status == models.RunStatusProcessing && stepsCompleted {
 				completed = true
 			}
 			payload := stepUpdatePayload{
-				WorkflowID:     workflowID,
-				WorkflowStatus: workflow.Status,
-				WorkflowError:  workflow.Error,
-				Steps:          stepItems,
-				Completed:      completed,
-				Summary:        summary,
+				RunID:     runID,
+				RunStatus: run.Status,
+				RunError:  run.Error,
+				Steps:     stepItems,
+				Completed: completed,
+				Summary:   summary,
 			}
 
 			payloadBytes, _ := json.Marshal(payload)

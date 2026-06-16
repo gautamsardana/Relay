@@ -42,7 +42,9 @@ func main() {
 	registry.Register(tools.NewHTTPRequest())
 	registry.Register(tools.NewDocumentRead())
 
-	planner := planner.New(store, plannerQueue, agent, registry)
+	planner := planner.New(config, store, plannerQueue, agent, registry)
+	planner.StartReconciler()
+	planner.StartScheduler()
 
 	server := api.New(planner)
 	server.ListenAndServe()

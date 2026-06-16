@@ -1,71 +1,86 @@
 # Why Relay?
 
-## The Problem with Existing AI Chat Tools
+## The Problem with Existing AI Tools
 
-Claude, ChatGPT, and similar tools are powerful for interactive, synchronous tasks. You type a command, the model responds, and you're done. For many tasks, this is sufficient.
+Claude, ChatGPT, and similar tools are powerful for interactive, synchronous tasks. You type a command, the model responds, and you're done. For many tasks, this is enough.
 
-But it breaks down in a specific class of problems:
+But it breaks down for a specific class of problems:
 
 - The task takes longer than a browser tab stays open
 - The task needs to run on a schedule without a human present
 - You need to see exactly what happened at each step and why
-- Multiple users need to run similar workflows simultaneously
 - A step fails halfway through and you need to retry just that step
+- The task should get smarter over time by remembering what it has already done
 
 These are not edge cases — they are the norm for any real automation workflow.
 
 ---
 
-## What Relay Does Differently
+## What Relay Is
 
-### 1. Asynchronous by Default
+Relay is an AI agent runtime. Users define persistent workers — give them instructions, a schedule, and tools. Workers run autonomously in the background, accumulate memory across runs, and produce better results over time.
 
-Claude chat is synchronous — you wait for a response. Relay accepts a command, returns a workflow ID immediately, and executes in the background. You can close the browser, come back an hour later, and see the completed results with a full audit trail.
+Internally: distributed async execution, durable Postgres state, RabbitMQ-backed workers, and real observability.
 
-This makes Relay viable for long-running tasks: multi-step research workflows, data pipelines, content generation that involves several API calls chained together.
-
-### 2. Durable State
-
-Every step — its inputs, outputs, status, errors, retry count — is persisted in Postgres. Nothing lives in memory. If the server crashes mid-execution, the workflow resumes exactly where it left off on restart.
-
-Claude chat has no memory of what it did. If something goes wrong, you start over. Relay never loses work.
-
-### 3. Full Observability
-
-You can see the exact plan Claude generated, the exact input passed to each tool, the exact output returned, and the exact error if something failed. Every decision is traceable.
-
-This matters when something goes wrong. Instead of "it didn't work," you get "step 3 failed because the Notion API returned a 403 — here's the exact payload that was sent."
-
-### 4. Intelligent Failure Recovery
-
-When a step fails, Relay doesn't just give up or blindly retry. It calls the agent with the full execution context — what was done, what was returned, what failed — and asks it to generate a recovery plan. The workflow adapts rather than halts.
-
-### 5. Scalable Execution
-
-Because workers are decoupled from the API server via RabbitMQ, step execution scales independently. Run one API instance and ten worker instances. Fifty users submitting workflows simultaneously doesn't slow down the API — workers process steps in parallel across workflows.
-
-### 6. Pluggable Tools
-
-Relay's tool system is an interface. Any capability — web search, Notion, email, databases, internal APIs — can be added without changing the core system. Claude automatically discovers available tools and uses them in plans.
-
-A generic `http_request` tool means Claude can call any API even without a dedicated integration.
+Externally: you create an AI employee and it works forever.
 
 ---
 
-## The Use Cases Relay Unlocks
+## The "AI Employee" Model
 
-| Use Case | Why Chat Can't Do It | Why Relay Can |
+Users should not think in terms of workflows.
+Users should think in terms of hiring AI employees.
+
+Instead of:
+> "Run this workflow."
+
+They say:
+> "Create an AI worker whose job is to do this forever."
+
+Each worker owns:
+- **Instructions** — what it does and how
+- **Schedule** — when it runs
+- **Memory** — what it has learned across runs
+- **Tools** — what it can execute
+- **History** — every run, every step, every output
+
+Examples of workers:
+- Find remote Go backend jobs every morning
+- Monitor competitors for new product announcements every hour
+- Track apartment listings until I move
+- Summarize AI research papers published each week
+
+---
+
+## Why This is Better Than Chat
+
+| | Chat | Relay |
 |---|---|---|
-| Daily job digest posted to Notion every morning | Requires scheduling, runs headlessly | Triggered on a cron, runs in background |
-| Research 20 competitors and generate a report | Takes 30+ minutes, many API calls | Async execution, full audit trail |
-| Monitor a topic and notify on Slack when relevant | Needs to run continuously | Scheduled workflows, persistent state |
-| Multi-user automation platform | One chat = one user | Workers handle N workflows in parallel |
-| Retry a failed step without restarting | No step-level control in chat | Step state in Postgres, retry at step level |
+| Execution | Synchronous, blocks the tab | Async, runs in background |
+| State | Forgotten after response | Durable in Postgres |
+| Memory | None | Persists across runs, gets smarter |
+| Failure | Start over | Retry at step level |
+| Observability | Black box | Every prompt, tool call, output traced |
+| Scale | One user, one session | N workers running in parallel |
 
 ---
 
 ## What Relay Is Not
 
-Relay is not a replacement for Claude chat for interactive tasks. If you need a quick answer or a one-shot task, chat is faster and simpler.
+Relay is not a replacement for Claude chat for interactive tasks. If you need a quick answer, chat is faster.
 
-Relay is infrastructure for **automated, observable, long-running agentic workflows** — the layer between an LLM and the real world, when that interaction needs to be durable, scalable, and auditable.
+Relay is infrastructure for **automated, observable, long-running agentic workflows** — the layer between an LLM and the real world, when that interaction needs to be durable, scheduled, memory-aware, and auditable.
+
+---
+
+## Why We Are Building This
+
+Three goals, one project:
+
+1. **Learn real distributed systems** — message queues, async workers, backpressure, rate limiting, horizontal scaling. Not toy examples — an actual running system.
+
+2. **Learn AI infrastructure** — how production AI systems are built beyond just calling an API. RAG, vector memory, prompt engineering, evaluation, observability for LLM calls.
+
+3. **Solve real problems** — job hunting is the first use case. It's a genuine recurring problem that benefits from scheduling, memory, deduplication, and structured tool access to ATS platforms.
+
+The job hunter is the proof of concept. If it works well enough that you'd actually use it daily, the platform generalizes to any domain: competitor monitoring, stock tracking, academic research, apartment hunting.
