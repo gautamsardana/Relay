@@ -147,6 +147,15 @@ func (ns NullWorkerStatus) Value() (driver.Value, error) {
 	return string(ns.WorkerStatus), nil
 }
 
+type Company struct {
+	CompanyID string    `json:"company_id"`
+	Name      string    `json:"name"`
+	Ats       string    `json:"ats"`
+	Slug      string    `json:"slug"`
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Run struct {
 	RunID      string           `json:"run_id"`
 	WorkerID   string           `json:"worker_id"`
@@ -192,7 +201,8 @@ type Worker struct {
 	Instructions    string         `json:"instructions"`
 	IntervalSeconds int32          `json:"interval_seconds"`
 	Status          WorkerStatus   `json:"status"`
-	ResumeUrl       sql.NullString `json:"resume_url"`
+	ResumeText      sql.NullString `json:"resume_text"`
+	RecencyWeight   int32          `json:"recency_weight"`
 	NextRunAt       sql.NullTime   `json:"next_run_at"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`

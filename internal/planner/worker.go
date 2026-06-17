@@ -15,9 +15,12 @@ import (
 // API directly.
 const minIntervalSeconds = 3600 // 1 hour
 
-func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeURL string) (models.Worker, error) {
+func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeText string, recencyWeight int) (models.Worker, error) {
 	if intervalSeconds < minIntervalSeconds {
 		return models.Worker{}, fmt.Errorf("interval must be at least %d seconds (1 hour), got %d", minIntervalSeconds, intervalSeconds)
+	}
+	if recencyWeight < 0 || recencyWeight > 100 {
+		return models.Worker{}, fmt.Errorf("recency_weight must be between 0 and 100, got %d", recencyWeight)
 	}
 
 	id, _ := uuid.NewV7()
@@ -33,7 +36,8 @@ func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions s
 		Instructions:    instructions,
 		IntervalSeconds: intervalSeconds,
 		Status:          models.WorkerStatusActive,
-		ResumeURL:       resumeURL,
+		ResumeText:      resumeText,
+		RecencyWeight:   recencyWeight,
 		NextRunAt:       &nextRunAt,
 	}
 

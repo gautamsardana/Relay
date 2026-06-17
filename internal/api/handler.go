@@ -63,18 +63,25 @@ func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID       string `json:"user_id"`
-		Name         string `json:"name"`
-		Instructions string `json:"instructions"`
-		IntervalHours int   `json:"interval_hours"`
-		ResumeURL    string `json:"resume_url"`
+		UserID        string `json:"user_id"`
+		Name          string `json:"name"`
+		Instructions  string `json:"instructions"`
+		IntervalHours int    `json:"interval_hours"`
+		ResumeText    string `json:"resume_text"`
+		RecencyWeight *int   `json:"recency_weight"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeURL)
+	// Default the recency/fit blend to 50/50 when the client omits it.
+	recencyWeight := 50
+	if req.RecencyWeight != nil {
+		recencyWeight = *req.RecencyWeight
+	}
+
+	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeText, recencyWeight)
 	if err != nil {
 		slog.Error("api/CreateWorker", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)

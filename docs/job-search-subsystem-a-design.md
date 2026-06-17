@@ -28,7 +28,11 @@ The two things that make or break it: **good source jobs** (clean ATS feeds) and
 
 **Out of scope (separate specs / later):**
 - **Subsystem B — automated discovery** (BFS crawler / dataset enrichment that grows the
-  catalog). Purely additive: it just `INSERT`s catalog rows. Subsystem A doesn't change.
+  catalog). Purely additive: it just `INSERT`s catalog rows; startup seeding only touches
+  rows present in the JSON, so discovered rows are never wiped. **Revisit the seeding
+  strategy when B ships** (e.g. seed only if the table is empty, or treat the JSON as a
+  one-time bootstrap) so the static JSON can't clobber the `name` of an overlapping
+  discovered/edited company.
 - **Workday and YC** boards (Workday has no clean public API; YC is a discovery concern).
 - **PDF resume upload** (v1 takes plain-text resume; PDF→text parsing is a later upgrade).
 - **Global jobs cache / Redis** (we chose live freshness; see §9).

@@ -17,7 +17,8 @@ type Worker struct {
 	Instructions    string
 	IntervalSeconds int
 	Status          WorkerStatus
-	ResumeURL       string
+	ResumeText      string
+	RecencyWeight   int
 	NextRunAt       *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time

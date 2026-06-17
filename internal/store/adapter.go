@@ -127,7 +127,8 @@ func toModelWorker(sw *sqlc.Worker) models.Worker {
 		Instructions:    sw.Instructions,
 		IntervalSeconds: int(sw.IntervalSeconds),
 		Status:          models.WorkerStatus(sw.Status),
-		ResumeURL:       sw.ResumeUrl.String,
+		ResumeText:      sw.ResumeText.String,
+		RecencyWeight:   int(sw.RecencyWeight),
 		NextRunAt:       nextRunAt,
 		CreatedAt:       sw.CreatedAt,
 		UpdatedAt:       sw.UpdatedAt,
@@ -146,7 +147,8 @@ func fromModelWorkerCreate(mw *models.Worker) sqlc.CreateWorkerParams {
 		Instructions:    mw.Instructions,
 		IntervalSeconds: int32(mw.IntervalSeconds),
 		Status:          sqlc.WorkerStatus(mw.Status),
-		ResumeUrl:       sql.NullString{String: mw.ResumeURL, Valid: mw.ResumeURL != ""},
+		ResumeText:      sql.NullString{String: mw.ResumeText, Valid: mw.ResumeText != ""},
+		RecencyWeight:   int32(mw.RecencyWeight),
 		NextRunAt:       nextRunAt,
 	}
 }
@@ -195,5 +197,30 @@ func fromModelRunUpdateStatus(runID string, status models.RunStatus, errMsg stri
 		RunID:  runID,
 		Status: status,
 		Error:  sql.NullString{String: errMsg, Valid: errMsg != ""},
+	}
+}
+
+// --- Company ---
+
+func toModelCompany(sc *sqlc.Company) models.Company {
+	if sc == nil {
+		return models.Company{}
+	}
+	return models.Company{
+		CompanyID: sc.CompanyID,
+		Name:      sc.Name,
+		ATS:       sc.Ats,
+		Slug:      sc.Slug,
+		Active:    sc.Active,
+		CreatedAt: sc.CreatedAt,
+	}
+}
+
+func fromModelCompanyUpsert(mc *models.Company) sqlc.UpsertCompanyParams {
+	return sqlc.UpsertCompanyParams{
+		CompanyID: mc.CompanyID,
+		Name:      mc.Name,
+		Ats:       mc.ATS,
+		Slug:      mc.Slug,
 	}
 }
