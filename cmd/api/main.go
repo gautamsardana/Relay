@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"os"
 
 	"github.com/gautamsardana/relay/internal/agent"
 	"github.com/gautamsardana/relay/internal/api"
+	"github.com/gautamsardana/relay/internal/catalog"
 	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/planner"
 	"github.com/gautamsardana/relay/internal/queue"
@@ -26,7 +28,11 @@ func main() {
 	store, err := store.New(config)
 	failOnError(err, "Failed to connect to DB")
 	defer store.Conn.Close()
-	
+
+	if err := catalog.Seed(context.Background(), store); err != nil {
+		slog.Error("failed to seed company catalog", "error", err)
+	}
+
 	conn, err := queue.Dial(config)
 	failOnError(err, "Failed to connect to queue")
 	defer conn.Close()

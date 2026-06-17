@@ -27,7 +27,7 @@ Use this tool when you need to read the full content of a specific URL or file.
 Use web_search to find URLs first, then document_read to read their full content.`
 }
 
-func (d *DocumentRead) Execute(ctx context.Context, input map[string]any) (map[string]any, error) {
+func (d *DocumentRead) Execute(ctx context.Context, input map[string]any, _ ExecutionContext) (map[string]any, error) {
 	source, ok := input["source"].(string)
 	if !ok || source == "" {
 		return nil, fmt.Errorf("document_read: missing or invalid 'source' field")

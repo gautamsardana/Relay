@@ -30,7 +30,7 @@ Use this tool when you need to find information, articles, job listings, or any 
 Do not use this tool multiple times for the same purpose.`
 }
 
-func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (map[string]any, error) {
+func (w *WebSearch) Execute(ctx context.Context, input map[string]any, _ ExecutionContext) (map[string]any, error) {
 	query, ok := input["query"].(string)
 	if !ok || query == "" {
 		return nil, fmt.Errorf("web_search: missing or invalid 'query' field")

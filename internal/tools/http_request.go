@@ -26,7 +26,7 @@ Use this tool when you need to call any API that doesn't have a dedicated tool.
 Headers and body are optional. Method defaults to GET if not provided.`
 }
 
-func (h *HTTPRequest) Execute(ctx context.Context, input map[string]any) (map[string]any, error) {
+func (h *HTTPRequest) Execute(ctx context.Context, input map[string]any, _ ExecutionContext) (map[string]any, error) {
 	url, ok := input["url"].(string)
 	if !ok || url == "" {
 		return nil, fmt.Errorf("http_request: missing or invalid 'url' field")

@@ -89,8 +89,15 @@ func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error
 		return err
 	}
 
+	slog.Info("building execution context", "run_id", step.RunID, "step_id", step.StepID)
+	execCtx, err := w.buildExecutionContext(ctx, step.RunID)
+	if err != nil {
+		w.failStep(ctx, &step, fmt.Errorf("failed to build execution context: %w", err))
+		return err
+	}
+
 	slog.Info("executing step", "run_id", step.RunID, "step_id", step.StepID, "tool", step.Tool)
-	result, err := tool.Execute(ctx, resolvedInput)
+	result, err := tool.Execute(ctx, resolvedInput, execCtx)
 	if err != nil {
 		return w.handleStepError(ctx, qm, &step, err)
 	}
@@ -132,6 +139,26 @@ func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error
 
 	slog.Info("next step published", "run_id", nextStep.RunID, "step_id", nextStep.StepID, "step_number", nextStep.StepNumber)
 	return nil
+}
+
+// buildExecutionContext resolves the run's worker and assembles the per-run
+// context tools may need (worker id for dedup, resume text + recency weight for
+// scoring). Two indexed PK reads per step — negligible.
+func (w *Worker) buildExecutionContext(ctx context.Context, runID string) (tools.ExecutionContext, error) {
+	run, err := w.store.GetRunByID(ctx, runID)
+	if err != nil {
+		return tools.ExecutionContext{}, fmt.Errorf("get run: %w", err)
+	}
+	worker, err := w.store.GetWorkerByID(ctx, run.WorkerID)
+	if err != nil {
+		return tools.ExecutionContext{}, fmt.Errorf("get worker: %w", err)
+	}
+	return tools.ExecutionContext{
+		RunID:         runID,
+		WorkerID:      worker.WorkerID,
+		ResumeText:    worker.ResumeText,
+		RecencyWeight: worker.RecencyWeight,
+	}, nil
 }
 
 // resolveInputs replaces {{steps[N].output.FIELD}} templates in step inputs

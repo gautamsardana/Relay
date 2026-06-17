@@ -6,10 +6,18 @@ import (
 	"strings"
 )
 
+// Run-time data needed for the tools for dedup and scoring
+type ExecutionContext struct {
+    RunID         string
+    WorkerID      string
+    ResumeText    string
+    RecencyWeight int
+}
+
 type Tool interface {
     Name()        string
     Description() string
-    Execute(ctx context.Context, input map[string]any) (map[string]any, error)
+    Execute(ctx context.Context, input map[string]any, exec ExecutionContext) (map[string]any, error)
 }
 
 type Registry struct {
