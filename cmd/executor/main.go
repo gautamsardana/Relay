@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/gautamsardana/relay/internal/agent"
 	"github.com/gautamsardana/relay/internal/config"
+	"github.com/gautamsardana/relay/internal/executor"
 	"github.com/gautamsardana/relay/internal/queue"
 	"github.com/gautamsardana/relay/internal/store"
 	"github.com/gautamsardana/relay/internal/tools"
-	"github.com/gautamsardana/relay/internal/executor"
 )
 
 func main(){
@@ -29,10 +30,10 @@ func main(){
 	failOnError(err, "Failed to connect to queue")
 	defer conn.Close()
 
-	registry := tools.NewRegistry()
-	registry.Register(tools.NewWebSearch(config))
-	registry.Register(tools.NewHTTPRequest())
-	registry.Register(tools.NewDocumentRead())
+	agent, err := agent.NewAgentManager(config)
+	failOnError(err, "Failed to connect to agents")
+
+	registry := tools.BuildRegistry(config, store, agent)
 
 	executor := executor.New(config, store, conn, registry)
 	executor.SpawnExecutors()

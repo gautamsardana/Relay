@@ -43,10 +43,7 @@ func main() {
 	agent, err := agent.NewAgentManager(config)
 	failOnError(err, "Failed to connect to agents")
 
-	registry := tools.NewRegistry()
-	registry.Register(tools.NewWebSearch(config))
-	registry.Register(tools.NewHTTPRequest())
-	registry.Register(tools.NewDocumentRead())
+	registry := tools.BuildRegistry(config, store, agent)
 
 	planner := planner.New(config, store, plannerQueue, agent, registry)
 	planner.StartReconciler()

@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/gautamsardana/relay/internal/config"
+	"github.com/gautamsardana/relay/internal/store"
 )
 
 // Run-time data needed for the tools for dedup and scoring
@@ -63,4 +66,18 @@ func BuildToolDescriptions(tools []Tool) string {
         sb.WriteString(fmt.Sprintf("- %s: %s\n", t.Name(), t.Description()))
     }
     return sb.String()
+}
+
+// BuildRegistry constructs the full tool registry shared by the API (for
+// planning/validation) and the executor (for execution). Centralizing it ensures
+// both binaries register an identical tool set — a mismatch would surface as a
+// "tool not in registry" failure at execution time.
+func BuildRegistry(cfg *config.Config, s *store.Store, llm Completer) *Registry {
+    r := NewRegistry()
+    r.Register(NewWebSearch(cfg))
+    r.Register(NewHTTPRequest())
+    r.Register(NewDocumentRead())
+    r.Register(NewJobSearch(s))
+    r.Register(NewScoreJobs(s, llm))
+    return r
 }
