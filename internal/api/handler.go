@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -55,6 +57,27 @@ func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
 	user, err := s.planner.CreateUser(r.Context(), req.Email)
 	if err != nil {
 		slog.Error("api/CreateUser", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(user)
+}
+
+// GetUserByEmail backs a simple email login: resolve an existing user by email.
+func (s *Server) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		http.Error(w, "email query param is required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := s.planner.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("api/GetUserByEmail", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

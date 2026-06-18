@@ -22,3 +22,7 @@ func (p *Planner) CreateUser(ctx context.Context, email string) (models.User, er
 func (p *Planner) GetUserByID(ctx context.Context, userID string) (models.User, error) {
 	return p.store.GetUserByID(ctx, userID)
 }
+
+func (p *Planner) GetUserByEmail(ctx context.Context, email string) (models.User, error) {
+	return p.store.GetUserByEmail(ctx, email)
+}

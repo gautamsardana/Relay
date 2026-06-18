@@ -23,6 +23,7 @@ func (s *Server) ListenAndServe() {
 	r.Use(middleware.Recoverer)
 
 	r.Post("/users", s.CreateUser)
+	r.Get("/users", s.GetUserByEmail)
 
 	r.Post("/workers", s.CreateWorker)
 	r.Get("/workers", s.ListWorkers)

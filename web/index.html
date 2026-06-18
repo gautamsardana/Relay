@@ -3,49 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Relay – Create Workflow</title>
-    <link rel="stylesheet" href="styles.css?v=2" />
+    <title>Relay</title>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="container">
-      <header class="header">
-        <h1>Relay</h1>
-        <p>Create a workflow request and watch its progress.</p>
-      </header>
-
-      <section class="panel">
-        <form id="workflow-form">
-          <label for="request">Workflow request</label>
-          <textarea
-            id="request"
-            name="request"
-            rows="6"
-            placeholder="Describe what you want Relay to do..."
-            required
-          ></textarea>
-
-          <button type="submit" id="submit-btn">Create workflow</button>
-        </form>
-      </section>
-
-      <section class="panel" id="result-panel" aria-live="polite">
-        <h2>Result</h2>
-        <p class="muted" id="result-hint">Submit a request to get a workflow ID.</p>
-        <div class="result" id="result"></div>
-      </section>
-
-      <section class="panel" id="status-panel" aria-live="polite">
-        <h2>Step updates</h2>
-        <p class="muted" id="status-hint">Once a workflow is created, real-time step updates can appear here.</p>
-        <ul id="status-list"></ul>
-        <div id="summary" class="summary" hidden>
-          <h3>Workflow results</h3>
-          <p id="summary-line" class="muted"></p>
-          <div id="summary-results"></div>
-        </div>
-      </section>
-    </main>
-
-    <script src="app.js?v=2"></script>
+    <header class="topbar">
+      <a class="brand" href="#/workers">Relay</a>
+      <div class="topbar-right" id="topbar-user"></div>
+    </header>
+    <main id="app" class="container"></main>
+    <script type="module" src="/js/app.js"></script>
   </body>
 </html>
