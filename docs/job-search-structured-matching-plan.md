@@ -4,7 +4,7 @@
 
 **Goal:** Replace fragile free-text/LLM-keyword job matching with structured, reliable matching (user-chosen category mapped to ATS department metadata + explicit keywords), make the job-hunt run deterministic, switch résumé input from pasted text to PDF upload (parsed server-side) with AI pre-fill of category/keywords, and add pause/resume + delete for workers.
 
-**Architecture:** A worker now carries a `category` (mapped to a curated department-synonym set) and optional `keywords`. `job_search` filters live ATS results by category (against the structured `department`/`team` fields the ATS returns, which we currently discard) and keywords (whole-word over title+description), reading these from the worker config via `ExecutionContext` rather than from LLM-generated input. The job-hunt run becomes a deterministic two-step pipeline (`job_search → score_jobs`), removing the LLM planner from the path entirely (which is the root cause of the wrong-tool / resolver-crash bugs). The LLM is kept for semantic scoring and for a one-time résumé classification: at create time the user uploads a PDF résumé, the server extracts its text and asks the LLM to suggest a category + keywords to pre-fill the form. The extracted text is still stored in `resume_text` (column unchanged); the textarea is gone. Worker lifecycle adds pause/resume (status toggle) and hard delete (FK cascade).
+**Architecture:** A worker now carries a `category` (mapped to a curated department-synonym set) and optional `keywords`. `job_search` filters live ATS results by category (against the structured `department`/`team` fields the ATS returns, which we currently discard) and keywords (whole-word over title+description), reading these from the worker config via `ExecutionContext` rather than from LLM-generated input. The job-hunt run becomes a deterministic two-step pipeline (`job_search → score_jobs`), removing the LLM planner from the path entirely (which is the root cause of the wrong-tool / resolver-crash bugs). The LLM is kept for semantic scoring and for a one-time résumé classification: at create time the user uploads a PDF résumé, the server extracts its text and asks the LLM to suggest a category + keywords to pre-fill the form. The extracted text is still stored in `resume_text` (column unchanged); the textarea is gone. Worker lifecycle adds pause/resume and soft delete (archive + hide from the list), all through a single status endpoint — no rows are ever destroyed.
 
 **Tech Stack:** Go, sqlc, PostgreSQL, RabbitMQ, `github.com/ledongthuc/pdf` (PDF text extraction), vanilla-JS frontend (ES modules).
 
@@ -19,12 +19,10 @@
 ## File map
 
 - `internal/migrations/02_create_workers.sql` — add `category`, `keywords` columns
-- `internal/migrations/03_create_runs.sql`, `04_create_steps.sql`, `05_create_seen_jobs.sql` — add `ON DELETE CASCADE`
-- `internal/store/queries/workers.sql` — category/keywords in CRUD, new `DeleteWorker`
+- `internal/store/queries/workers.sql` — category/keywords in CRUD; `ListWorkersByUser` hides archived
 - `internal/models/worker.go` — `Category string`, `Keywords []string`
 - `internal/models/job.go` — `Department`, `Team`
 - `internal/store/adapter.go` — worker category/keywords conversion (+ csv helpers)
-- `internal/store/worker.go` — `DeleteWorker`
 - `internal/tools/categories.go` (new) — category constants + department synonym map + `matchesCategory`
 - `internal/tools/job_search.go` — structured filter reading from `ExecutionContext`
 - `internal/tools/score_jobs.go` — intent string from category/keywords/instructions
@@ -33,7 +31,7 @@
 - `internal/tools/jobs.go` — department/team in wire shape
 - `internal/executor/worker.go` — populate new `ExecutionContext` fields
 - `internal/planner/run.go` — deterministic pipeline (no `GeneratePlan`)
-- `internal/planner/worker.go`, `internal/api/handler.go`, `internal/api/server.go` — category/keywords + delete/pause/resume
+- `internal/planner/worker.go`, `internal/api/handler.go`, `internal/api/server.go` — category/keywords + status (pause/resume/archive)
 - `internal/resume/parse.go` (new) — PDF text extraction (`ledongthuc/pdf`)
 - `internal/planner/resume.go` (new) — `ParseResume` + LLM category/keyword suggestion
 - `internal/tools/categories.go` — also exposes `Categories()` for the suggestion prompt
@@ -43,13 +41,10 @@
 
 ## Part A — Worker structured fields + lifecycle
 
-### Task A1: Migrations (columns + cascade)
+### Task A1: Migration (worker columns)
 
 **Files:**
 - Modify: `internal/migrations/02_create_workers.sql`
-- Modify: `internal/migrations/03_create_runs.sql:5`
-- Modify: `internal/migrations/04_create_steps.sql:11`
-- Modify: `internal/migrations/05_create_seen_jobs.sql:3`
 
 - [ ] **Step 1: Add columns to workers.** In `02_create_workers.sql`, after the `recency_weight` line add:
 
@@ -58,21 +53,18 @@
     keywords     TEXT NOT NULL DEFAULT '',
 ```
 
-- [ ] **Step 2: Add cascade to the three FKs.**
-  - `03_create_runs.sql:5` → `    worker_id   UUID NOT NULL REFERENCES workers(worker_id) ON DELETE CASCADE,`
-  - `04_create_steps.sql:11` → `    run_id       UUID NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,`
-  - `05_create_seen_jobs.sql:3` → `    worker_id  UUID NOT NULL REFERENCES workers(worker_id) ON DELETE CASCADE,`
+(No FK cascade is needed: "delete" is a soft delete that sets `status = 'archived'`, so worker rows and their run history are never removed.)
 
-- [ ] **Step 3: Re-apply schema to the dev DB** (drops/recreates; this is pre-prod). Verify the columns exist:
+- [ ] **Step 2: Re-apply schema to the dev DB** (drops/recreates; this is pre-prod). Verify the columns exist:
 
 Run: `psql "$DATABASE_URL" -c "\d workers" | grep -E "category|keywords"`
 Expected: both columns listed.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add internal/migrations/
-git commit -m "feat(db): worker category/keywords + ON DELETE CASCADE"
+git add internal/migrations/02_create_workers.sql
+git commit -m "feat(db): worker category/keywords columns"
 ```
 
 ### Task A2: Worker model + queries + sqlc
@@ -97,25 +89,29 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at, created_at, updated_at, category, keywords;
 ```
 
-Add the same `category, keywords` to the SELECT lists in `GetWorkerByID`, `ListWorkersByUser`, `ListDueWorkers`. Also add a delete query:
+Add the same `category, keywords` to the SELECT lists in `GetWorkerByID`, `ListWorkersByUser`, `ListDueWorkers`. Also change `ListWorkersByUser` to hide archived workers:
 
 ```sql
--- name: DeleteWorker :exec
-DELETE FROM workers WHERE worker_id = $1;
+-- name: ListWorkersByUser :many
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at, created_at, updated_at, category, keywords
+FROM workers
+WHERE user_id = $1 AND status != 'archived'
+ORDER BY created_at DESC;
 ```
+
+(No delete query — "delete" archives via the existing `UpdateWorkerStatus`. `ListDueWorkers` already filters `status = 'active'`, so paused and archived workers never run.)
 
 - [ ] **Step 3: Regenerate sqlc.**
 
 Run: `sqlc generate`
-Expected: no error; `internal/store/sqlc/workers.sql.go` now has `Category` and `Keywords` (both `string`) and a `DeleteWorker` func.
+Expected: no error; `internal/store/sqlc/workers.sql.go` now has `Category` and `Keywords` (both `string`).
 
-- [ ] **Step 4: Commit** `git add -A && git commit -m "feat(store): worker category/keywords queries + DeleteWorker"`
+- [ ] **Step 4: Commit** `git add -A && git commit -m "feat(store): worker category/keywords queries; hide archived"`
 
-### Task A3: Adapter (csv <-> []string) + store DeleteWorker
+### Task A3: Adapter (csv <-> []string)
 
 **Files:**
 - Modify: `internal/store/adapter.go`
-- Modify: `internal/store/worker.go`
 - Test: `internal/store/adapter_test.go` (new)
 
 - [ ] **Step 1: Write the failing test** for the csv helpers. Create `internal/store/adapter_test.go`:
@@ -177,20 +173,12 @@ func splitCSV(s string) []string {
 
 Add `"strings"` to the import block. In `toModelWorker`, add to the returned struct: `Category: sw.Category,` and `Keywords: splitCSV(sw.Keywords),`. In `fromModelWorkerCreate`, add: `Category: mw.Category,` and `Keywords: joinCSV(mw.Keywords),`.
 
-- [ ] **Step 4: Add `DeleteWorker` to the store.** In `internal/store/worker.go`:
-
-```go
-func (s *Store) DeleteWorker(ctx context.Context, workerID string) error {
-	return s.queries.DeleteWorker(ctx, workerID)
-}
-```
-
-- [ ] **Step 5: Run tests + build.**
+- [ ] **Step 4: Run tests + build.**
 
 Run: `go test ./internal/store/ -run TestCSVRoundTrip && go build ./...`
 Expected: PASS, build OK.
 
-- [ ] **Step 6: Commit** `git add -A && git commit -m "feat(store): worker csv adapter + DeleteWorker"`
+- [ ] **Step 5: Commit** `git add -A && git commit -m "feat(store): worker csv adapter"`
 
 ### Task A4: Planner methods
 
@@ -233,23 +221,19 @@ func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions s
 
 Add the `tools` import: `"github.com/gautamsardana/relay/internal/tools"`.
 
-- [ ] **Step 2: Add lifecycle passthroughs** in `internal/planner/worker.go`:
+- [ ] **Step 2: Add a status passthrough** in `internal/planner/worker.go` (used for pause, resume, and archive/delete). If an `UpdateWorkerStatus` passthrough already exists, reuse it and skip this:
 
 ```go
-func (p *Planner) DeleteWorker(ctx context.Context, workerID string) error {
-	return p.store.DeleteWorker(ctx, workerID)
-}
-
 func (p *Planner) SetWorkerStatus(ctx context.Context, workerID string, status models.WorkerStatus) error {
 	return p.store.UpdateWorkerStatus(ctx, workerID, status)
 }
 ```
 
-(Existing `UpdateWorkerStatus` passthrough may already exist; if so, reuse it and skip the duplicate.)
+(No `DeleteWorker` method: "delete" is `SetWorkerStatus(..., archived)`, and `ListWorkersByUser` hides archived workers.)
 
 - [ ] **Step 3: Build.** `go build ./...` Expected: fails only in `api/handler.go` (CreateWorker arity) — fixed in Task A5. Confirm the planner package compiles in isolation: `go build ./internal/planner/`.
 
-- [ ] **Step 4: Commit** `git add -A && git commit -m "feat(planner): worker category/keywords + delete + status"`
+- [ ] **Step 4: Commit** `git add -A && git commit -m "feat(planner): worker category/keywords + status"`
 
 ### Task A5: API handlers + routes
 
@@ -278,19 +262,9 @@ After decoding and the `recencyWeight` defaulting:
 	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeText, recencyWeight, req.Category, req.Keywords)
 ```
 
-- [ ] **Step 2: Add delete + status handlers** in `internal/api/handler.go`:
+- [ ] **Step 2: Add the status handler** in `internal/api/handler.go` (pause/resume/archive all go through this; "delete" sends `status: "archived"`):
 
 ```go
-func (s *Server) DeleteWorker(w http.ResponseWriter, r *http.Request) {
-	workerID := chi.URLParam(r, "id")
-	if err := s.planner.DeleteWorker(r.Context(), workerID); err != nil {
-		slog.Error("api/DeleteWorker", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (s *Server) SetWorkerStatus(w http.ResponseWriter, r *http.Request) {
 	workerID := chi.URLParam(r, "id")
 	var req struct {
@@ -316,16 +290,15 @@ func (s *Server) SetWorkerStatus(w http.ResponseWriter, r *http.Request) {
 
 Add `"github.com/gautamsardana/relay/internal/models"` to the handler imports.
 
-- [ ] **Step 3: Routes.** In `internal/api/server.go`, after `r.Get("/workers/{id}", s.GetWorker)`:
+- [ ] **Step 3: Route.** In `internal/api/server.go`, after `r.Get("/workers/{id}", s.GetWorker)`:
 
 ```go
-	r.Delete("/workers/{id}", s.DeleteWorker)
 	r.Patch("/workers/{id}/status", s.SetWorkerStatus)
 ```
 
 - [ ] **Step 4: Build + vet.** `go build ./... && go vet ./...` Expected: OK.
 
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat(api): worker create category/keywords + delete + status routes"`
+- [ ] **Step 5: Commit** `git add -A && git commit -m "feat(api): worker create category/keywords + status route"`
 
 ---
 
@@ -1016,17 +989,14 @@ Add the new fields to the form card: `field("Category", category)`, `field("Keyw
 - [ ] **Step 1: api.js methods.**
 
 ```js
-  async deleteWorker(id) {
-    await request("DELETE", `/workers/${id}`);
-  },
   async setWorkerStatus(id, status) {
     await request("PATCH", `/workers/${id}/status`, { status });
   },
 ```
 
-(Allow `request` to return null on 204: it already reads text and JSON-parses only if non-empty, so 204 is fine.)
+(`request` returns null on 204 — it reads the text and JSON-parses only if non-empty.)
 
-- [ ] **Step 2: Buttons on worker detail** (`worker.js`, in `renderDetail`, next to "Run now"): a Pause/Resume button (toggles based on `worker.status`) and a Delete button (with `confirm()`), then re-render or navigate:
+- [ ] **Step 2: Buttons on worker detail** (`worker.js`, in `renderDetail`, next to "Run now"): a Pause/Resume button (toggles based on `worker.status`) and a Delete button. "Delete" is a soft delete (archive), which hides the worker from the list:
 
 ```js
   const pauseLabel = worker.status === "paused" ? "Resume" : "Pause";
@@ -1039,17 +1009,17 @@ Add the new fields to the form card: `field("Category", category)`, `field("Keyw
 
   const delBtn = el("button", { class: "btn btn-ghost" }, "Delete");
   delBtn.addEventListener("click", async () => {
-    if (!confirm(`Delete worker "${worker.name}"? This removes its run history.`)) return;
-    await api.deleteWorker(worker.worker_id);
+    if (!confirm(`Delete worker "${worker.name}"? It will be archived and hidden.`)) return;
+    await api.setWorkerStatus(worker.worker_id, "archived");
     navigate("/workers");
   });
 ```
 
 Add both into the `page-head` action area (alongside `runNow`). `navigate` to the same path forces a re-render (the router supports same-path re-render).
 
-- [ ] **Step 3: Verify** `node --check web/js/api.js web/js/views/worker.js`. Manual: pause toggles the badge; delete returns to the list and the worker is gone.
+- [ ] **Step 3: Verify** `node --check web/js/api.js web/js/views/worker.js`. Manual: pause toggles the badge; delete returns to the list and the worker is gone from it.
 
-- [ ] **Step 4: Commit** `git add -A && git commit -m "feat(web): pause/resume + delete worker"`
+- [ ] **Step 4: Commit** `git add -A && git commit -m "feat(web): pause/resume + archive (soft delete) worker"`
 
 ### Task F3: Show category/department on results (optional polish)
 
@@ -1066,11 +1036,11 @@ Add both into the `page-head` action area (alongside `runNow`). `navigate` to th
 
 - [ ] `go build ./... && go vet ./... && go test ./...` all green.
 - [ ] `for f in $(find web/js -name '*.js'); do node --check "$f"; done` all OK.
-- [ ] Manual end-to-end (stack up): on the create form, upload a PDF résumé and confirm category + keywords auto-fill; create a Software Engineering worker with keyword "golang", Run now, confirm: two-step run, engineering jobs only, golang-relevant, ranked sensibly; pause hides it from the scheduler; delete removes it.
+- [ ] Manual end-to-end (stack up): on the create form, upload a PDF résumé and confirm category + keywords auto-fill; create a Software Engineering worker with keyword "golang", Run now, confirm: two-step run, engineering jobs only, golang-relevant, ranked sensibly; pause hides it from the scheduler; delete archives it and it disappears from the list.
 
 ## Notes / decisions baked in
 
-- **Delete = hard delete with cascade.** Removes the worker and its runs/steps/seen-jobs. If you prefer soft delete (archive + hide), swap Task A1 cascade + Task A5 `DeleteWorker` for a status update to `archived` and filter archived out of `ListWorkersByUser`.
+- **Delete = soft delete (archive).** "Delete" sets `status = 'archived'`; `ListWorkersByUser` hides archived workers and `ListDueWorkers` (status = 'active') never runs them. Nothing is destroyed — run history is preserved and a worker could be un-archived later if we add that. No delete endpoint or FK cascade needed.
 - **Deterministic pipeline replaces LLM planning for job runs.** This is what makes runs reliable. The LLM is retained only for scoring. `web_search`/`document_read`/`http_request` stay registered but are no longer reachable by job runs, so the wrong-tool and resolver-crash bugs are gone. (If you later re-broaden into a general agent platform, reintroduce LLM planning behind a worker "type".)
 - **Lexical filter ceiling.** Category+department matching plus whole-word keywords is far better than title-substring, but still lexical. Semantic (pgvector) retrieval remains the future upgrade when the catalog grows, and pairs with a persistent jobs+embeddings store.
 - **Résumé is now PDF-only, parsed server-side.** The textarea is removed; the `resume_text` column is unchanged (it stores the extracted text). PDF parsing handles text-based PDFs; scanned/image résumés need OCR (out of scope) and will simply yield empty text, in which case scoring falls back to category+keywords. The résumé→category/keywords suggestion is best-effort: if the LLM call fails, the form still works (the user picks manually).
