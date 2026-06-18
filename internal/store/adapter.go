@@ -224,3 +224,14 @@ func fromModelCompanyUpsert(mc *models.Company) sqlc.UpsertCompanyParams {
 		Slug:      mc.Slug,
 	}
 }
+
+// --- SeenJob ---
+
+func fromSeenJob(id, workerID string, job models.Job) sqlc.RecordSeenJobParams {
+	return sqlc.RecordSeenJobParams{
+		ID:        id,
+		WorkerID:  workerID,
+		CompanyID: job.CompanyID,
+		JobID:     job.JobID,
+	}
+}

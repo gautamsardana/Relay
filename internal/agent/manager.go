@@ -58,3 +58,12 @@ func (am *AgentManager) GeneratePlan(ctx context.Context, request string, tools 
     }
     return plan, nil
 }
+
+func (am *AgentManager) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+    out, err := am.primary.Complete(ctx, systemPrompt, userPrompt)
+    if err != nil {
+        log.Printf("primary agent failed: %v, falling back to secondary", err)
+        return am.secondary.Complete(ctx, systemPrompt, userPrompt)
+    }
+    return out, nil
+}

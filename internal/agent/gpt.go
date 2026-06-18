@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/gautamsardana/relay/internal/config"
 	"github.com/gautamsardana/relay/internal/tools"
@@ -67,13 +68,30 @@ func (gpt *GPT) GeneratePlan(ctx context.Context, request string, currTools []to
     }
 
     content := resp.Choices[0].Message.Content
-	fmt.Print(resp, "\n\n", content)
-    
+
     var steps []StepPlan
     if err := json.Unmarshal([]byte(content), &steps); err != nil {
         return nil, fmt.Errorf("failed to parse plan: %w, raw response: %s", err, content)
     }
 
     return steps, nil
+}
+
+func (gpt *GPT) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+    resp, err := gpt.Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+        Model: openai.GPT4o,
+        Messages: []openai.ChatCompletionMessage{
+            {Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
+            {Role: openai.ChatMessageRoleUser, Content: userPrompt},
+        },
+        Temperature: 0,
+    })
+    if err != nil {
+        return "", fmt.Errorf("GPT completion error: %w", err)
+    }
+    if len(resp.Choices) == 0 {
+        return "", fmt.Errorf("GPT: empty response")
+    }
+    return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 

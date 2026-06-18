@@ -26,3 +26,9 @@ func NewClaude(config *config.Config) ( *Claude, error){
 func (c *Claude) GeneratePlan(ctx context.Context, request string, tools []tools.Tool) ([]StepPlan, error){
 	return nil, nil
 }
+
+// Complete is not yet implemented for Claude (deferred, like GeneratePlan).
+// Use openai/groq as the primary provider for tools that need completions.
+func (c *Claude) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	return "", fmt.Errorf("claude: Complete not implemented")
+}

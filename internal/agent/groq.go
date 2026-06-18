@@ -79,12 +79,30 @@ func (groq *Groq) GeneratePlan(ctx context.Context, request string, currTools []
     }
 
     content := strings.TrimSpace(resp.Choices[0].Message.Content)
-    
+
     var steps []StepPlan
     if err := json.Unmarshal([]byte(content), &steps); err != nil {
         return nil, fmt.Errorf("failed to parse plan: %w, raw response: %s", err, content)
     }
 
     return steps, nil
+}
+
+func (groq *Groq) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+    resp, err := groq.Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+        Model: groq.Model,
+        Messages: []openai.ChatCompletionMessage{
+            {Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
+            {Role: openai.ChatMessageRoleUser, Content: userPrompt},
+        },
+        Temperature: 0,
+    })
+    if err != nil {
+        return "", fmt.Errorf("groq completion error: %w", err)
+    }
+    if len(resp.Choices) == 0 {
+        return "", fmt.Errorf("groq: empty response")
+    }
+    return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
