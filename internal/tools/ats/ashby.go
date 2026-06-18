@@ -31,11 +31,12 @@ func (a *ashbyAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 
 	var body struct {
 		Jobs []struct {
-			ID          string `json:"id"`
-			Title       string `json:"title"`
-			Location    string `json:"location"`
-			JobURL      string `json:"jobUrl"`
-			PublishedAt string `json:"publishedAt"`
+			ID               string `json:"id"`
+			Title            string `json:"title"`
+			Location         string `json:"location"`
+			JobURL           string `json:"jobUrl"`
+			PublishedAt      string `json:"publishedAt"`
+			DescriptionPlain string `json:"descriptionPlain"`
 		} `json:"jobs"`
 	}
 	if err := getJSON(ctx, a.client, url, &body); err != nil {
@@ -46,14 +47,15 @@ func (a *ashbyAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 	for _, j := range body.Jobs {
 		postedAt, _ := time.Parse(time.RFC3339, j.PublishedAt)
 		jobs = append(jobs, models.Job{
-			CompanyID: slug,
-			Company:   companyName,
-			JobID:     j.ID,
-			Title:     j.Title,
-			URL:       j.JobURL,
-			Location:  j.Location,
-			ATS:       Ashby,
-			PostedAt:  postedAt,
+			CompanyID:   slug,
+			Company:     companyName,
+			JobID:       j.ID,
+			Title:       j.Title,
+			URL:         j.JobURL,
+			Location:    j.Location,
+			Description: cleanText(j.DescriptionPlain),
+			ATS:         Ashby,
+			PostedAt:    postedAt,
 		})
 	}
 	return jobs, nil

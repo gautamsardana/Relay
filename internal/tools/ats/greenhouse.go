@@ -34,6 +34,7 @@ func (g *greenhouseAdapter) Fetch(ctx context.Context, slug, companyName string)
 			AbsoluteURL    string `json:"absolute_url"`
 			UpdatedAt      string `json:"updated_at"`
 			FirstPublished string `json:"first_published"`
+			Content        string `json:"content"`
 			Location       struct {
 				Name string `json:"name"`
 			} `json:"location"`
@@ -52,14 +53,15 @@ func (g *greenhouseAdapter) Fetch(ctx context.Context, slug, companyName string)
 			postedAt, _ = time.Parse(time.RFC3339, j.UpdatedAt)
 		}
 		jobs = append(jobs, models.Job{
-			CompanyID: slug,
-			Company:   companyName,
-			JobID:     strconv.FormatInt(j.ID, 10),
-			Title:     j.Title,
-			URL:       j.AbsoluteURL,
-			Location:  j.Location.Name,
-			ATS:       Greenhouse,
-			PostedAt:  postedAt,
+			CompanyID:   slug,
+			Company:     companyName,
+			JobID:       strconv.FormatInt(j.ID, 10),
+			Title:       j.Title,
+			URL:         j.AbsoluteURL,
+			Location:    j.Location.Name,
+			Description: htmlToText(j.Content),
+			ATS:         Greenhouse,
+			PostedAt:    postedAt,
 		})
 	}
 	return jobs, nil

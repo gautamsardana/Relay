@@ -21,6 +21,11 @@ const recencyWindow = 30 * 24 * time.Hour
 // (best-first pagination) rather than being silently dropped.
 const maxRankedResults = 25
 
+// maxJobsToScore bounds how many jobs we send to the LLM in one run (token
+// guard, mainly for a worker's first run when everything is new). We score the
+// most-recent N; any beyond that get fit 0 and rank on recency alone.
+const maxJobsToScore = 100
+
 // Completer is the slice of the agent we need: a single raw LLM completion.
 // Declared here (not imported from agent) to avoid an import cycle, since the
 // agent package imports tools. *agent.AgentManager satisfies this structurally.
@@ -60,7 +65,7 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	// fit is 0..1 per job_id. Skip the LLM entirely when recency is weighted 100%.
 	fit := map[string]float64{}
 	if exec.RecencyWeight < 100 {
-		scored, err := sj.scoreFit(ctx, exec.ResumeText, jobs)
+		scored, err := sj.scoreFit(ctx, exec.Instructions, exec.ResumeText, jobsToScore(jobs))
 		if err != nil {
 			return nil, fmt.Errorf("score_jobs: fit scoring: %w", err)
 		}
@@ -98,6 +103,7 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	out := make([]map[string]any, len(ranked))
 	for i, rj := range ranked {
 		m := jobToMap(rj.job)
+		delete(m, "description") // not needed in the stored/displayed result
 		m["fit_score"] = rj.fit
 		m["recency_score"] = rj.recency
 		m["score"] = rj.final
@@ -106,22 +112,48 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	return map[string]any{"ranked_jobs": out}, nil
 }
 
+// jobsToScore caps LLM input to the most-recent maxJobsToScore jobs.
+func jobsToScore(jobs []models.Job) []models.Job {
+	if len(jobs) <= maxJobsToScore {
+		return jobs
+	}
+	sorted := append([]models.Job(nil), jobs...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].PostedAt.After(sorted[j].PostedAt) })
+	return sorted[:maxJobsToScore]
+}
+
 // scoreFit asks the LLM for a 0..100 fit score per job and returns job_id → 0..1.
-func (sj *ScoreJobs) scoreFit(ctx context.Context, resume string, jobs []models.Job) (map[string]float64, error) {
+// It scores each job against both the user's search intent (instructions) and
+// their résumé.
+func (sj *ScoreJobs) scoreFit(ctx context.Context, instructions, resume string, jobs []models.Job) (map[string]float64, error) {
 	type brief struct {
-		JobID    string `json:"job_id"`
-		Title    string `json:"title"`
-		Company  string `json:"company"`
-		Location string `json:"location"`
+		JobID       string `json:"job_id"`
+		Title       string `json:"title"`
+		Company     string `json:"company"`
+		Location    string `json:"location"`
+		Description string `json:"description"`
 	}
 	briefs := make([]brief, len(jobs))
 	for i, j := range jobs {
-		briefs[i] = brief{JobID: j.JobID, Title: j.Title, Company: j.Company, Location: j.Location}
+		briefs[i] = brief{
+			JobID:       j.JobID,
+			Title:       j.Title,
+			Company:     j.Company,
+			Location:    j.Location,
+			Description: j.Description,
+		}
 	}
 	jobsJSON, _ := json.Marshal(briefs)
 
-	system := `You are a job-matching assistant. Score how well each job fits the candidate's resume on a scale of 0 to 100 (100 = perfect fit). Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. No prose, no markdown.`
-	user := fmt.Sprintf("Candidate resume:\n%s\n\nJobs to score:\n%s\n\nReturn the JSON array now.", resume, jobsJSON)
+	if strings.TrimSpace(instructions) == "" {
+		instructions = "(not specified)"
+	}
+	if strings.TrimSpace(resume) == "" {
+		resume = "(not provided)"
+	}
+
+	system := `You are a job-matching assistant. Using each job's title and description, score how well it matches BOTH what the user is looking for AND their résumé, on a scale of 0 to 100 (100 = ideal match). Weigh required skills, seniority level, location, and domain. A job that ignores the user's stated criteria (e.g. wrong role, wrong seniority, wrong location) should score low even if the company is appealing. Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. No prose, no markdown.`
+	user := fmt.Sprintf("What the user is looking for:\n%s\n\nCandidate résumé:\n%s\n\nJobs to score:\n%s\n\nReturn the JSON array now.", instructions, resume, jobsJSON)
 
 	raw, err := sj.llm.Complete(ctx, system, user)
 	if err != nil {

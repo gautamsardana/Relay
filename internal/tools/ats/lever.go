@@ -28,11 +28,12 @@ func (l *leverAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 
 	// Lever returns a bare JSON array of postings.
 	var postings []struct {
-		ID         string `json:"id"`
-		Text       string `json:"text"`
-		HostedURL  string `json:"hostedUrl"`
-		CreatedAt  int64  `json:"createdAt"` // epoch milliseconds
-		Categories struct {
+		ID               string `json:"id"`
+		Text             string `json:"text"`
+		HostedURL        string `json:"hostedUrl"`
+		CreatedAt        int64  `json:"createdAt"` // epoch milliseconds
+		DescriptionPlain string `json:"descriptionPlain"`
+		Categories       struct {
 			Location string `json:"location"`
 		} `json:"categories"`
 	}
@@ -47,14 +48,15 @@ func (l *leverAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 			postedAt = time.UnixMilli(p.CreatedAt)
 		}
 		jobs = append(jobs, models.Job{
-			CompanyID: slug,
-			Company:   companyName,
-			JobID:     p.ID,
-			Title:     p.Text,
-			URL:       p.HostedURL,
-			Location:  p.Categories.Location,
-			ATS:       Lever,
-			PostedAt:  postedAt,
+			CompanyID:   slug,
+			Company:     companyName,
+			JobID:       p.ID,
+			Title:       p.Text,
+			URL:         p.HostedURL,
+			Location:    p.Categories.Location,
+			Description: cleanText(p.DescriptionPlain),
+			ATS:         Lever,
+			PostedAt:    postedAt,
 		})
 	}
 	return jobs, nil

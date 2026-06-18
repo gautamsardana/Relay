@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -97,26 +98,46 @@ func (j *JobSearch) fetchAll(ctx context.Context, companies []models.Company) []
 	return all
 }
 
+// filterByKeywords keeps jobs where any keyword appears as a whole word in the
+// title OR description. Whole-word matching avoids substring false positives
+// (e.g. "go" matching "logo"), and searching the description (not just the
+// title) is what stops us dropping relevant roles whose titles are generic
+// (e.g. "Backend Engineer" whose description says "Go"). This is a recall net;
+// precision is the scorer's job.
 func filterByKeywords(jobs []models.Job, keywords []string) []models.Job {
-	if len(keywords) == 0 {
+	matchers := compileKeywordMatchers(keywords)
+	if len(matchers) == 0 {
 		return jobs
-	}
-	lowered := make([]string, len(keywords))
-	for i, kw := range keywords {
-		lowered[i] = strings.ToLower(kw)
 	}
 
 	out := make([]models.Job, 0, len(jobs))
 	for _, job := range jobs {
-		title := strings.ToLower(job.Title)
-		for _, kw := range lowered {
-			if strings.Contains(title, kw) {
+		haystack := job.Title + " " + job.Description
+		for _, re := range matchers {
+			if re.MatchString(haystack) {
 				out = append(out, job)
 				break
 			}
 		}
 	}
 	return out
+}
+
+func compileKeywordMatchers(keywords []string) []*regexp.Regexp {
+	matchers := make([]*regexp.Regexp, 0, len(keywords))
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		// (?i) case-insensitive, \b word boundaries for whole-word matching.
+		re, err := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(kw) + `\b`)
+		if err != nil {
+			continue
+		}
+		matchers = append(matchers, re)
+	}
+	return matchers
 }
 
 func dropSeen(jobs []models.Job, seen store.SeenJobSet) []models.Job {

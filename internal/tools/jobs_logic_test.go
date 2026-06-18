@@ -11,15 +11,40 @@ import (
 
 func TestFilterByKeywords(t *testing.T) {
 	jobs := []models.Job{
-		{JobID: "1", Title: "Senior Backend Engineer"},
-		{JobID: "2", Title: "Product Designer"},
-		{JobID: "3", Title: "Infrastructure Engineer (Go)"},
+		{JobID: "1", Title: "Senior Backend Engineer", Description: "We build payments infra in Go."},
+		{JobID: "2", Title: "Product Designer", Description: "Design our logo and brand."},
+		{JobID: "3", Title: "Platform Engineer", Description: "Golang, Kubernetes, distributed systems."},
 	}
 
-	// case-insensitive substring match on title
-	got := filterByKeywords(jobs, []string{"backend", "infrastructure"})
-	if len(got) != 2 {
-		t.Fatalf("want 2 matches, got %d", len(got))
+	contains := func(js []models.Job, id string) bool {
+		for _, j := range js {
+			if j.JobID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	// "golang" is in no title, only job 3's description. Title-only matching
+	// would have returned nothing; searching the description finds it.
+	got := filterByKeywords(jobs, []string{"golang"})
+	if len(got) != 1 || !contains(got, "3") {
+		t.Fatalf("golang should match only job 3 (via description), got %+v", got)
+	}
+
+	// Whole-word "go": matches job 1 ("in Go.") but NOT job 2 ("logo") — the
+	// substring trap the old filter fell into.
+	got = filterByKeywords(jobs, []string{"go"})
+	if !contains(got, "1") {
+		t.Fatalf(`"go" should match job 1 (description "in Go."), got %+v`, got)
+	}
+	if contains(got, "2") {
+		t.Fatalf(`"go" must NOT match job 2 ("logo"), got %+v`, got)
+	}
+
+	// title match still works
+	if got = filterByKeywords(jobs, []string{"backend"}); !contains(got, "1") {
+		t.Fatalf("backend should match job 1, got %+v", got)
 	}
 
 	// no keywords → all jobs pass through

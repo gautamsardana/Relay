@@ -7,11 +7,44 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gautamsardana/relay/internal/models"
 )
+
+// maxDescriptionLen bounds stored/scored descriptions to keep token cost and
+// step-output size in check.
+const maxDescriptionLen = 1500
+
+var (
+	htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+	wsRe      = regexp.MustCompile(`\s+`)
+)
+
+// cleanText normalizes whitespace and truncates already-plain text.
+func cleanText(s string) string {
+	s = wsRe.ReplaceAllString(s, " ")
+	return truncateRunes(strings.TrimSpace(s), maxDescriptionLen)
+}
+
+// htmlToText unescapes entity-encoded HTML (Greenhouse), strips tags, then cleans.
+func htmlToText(s string) string {
+	s = html.UnescapeString(s)
+	s = htmlTagRe.ReplaceAllString(s, " ")
+	return cleanText(s)
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
 
 const (
 	Greenhouse = "greenhouse"

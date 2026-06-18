@@ -12,14 +12,15 @@ import (
 
 func jobToMap(j models.Job) map[string]any {
 	return map[string]any{
-		"company_id": j.CompanyID,
-		"company":    j.Company,
-		"job_id":     j.JobID,
-		"title":      j.Title,
-		"url":        j.URL,
-		"location":   j.Location,
-		"ats":        j.ATS,
-		"posted_at":  j.PostedAt.Format(time.RFC3339),
+		"company_id":  j.CompanyID,
+		"company":     j.Company,
+		"job_id":      j.JobID,
+		"title":       j.Title,
+		"url":         j.URL,
+		"location":    j.Location,
+		"description": j.Description,
+		"ats":         j.ATS,
+		"posted_at":   j.PostedAt.Format(time.RFC3339),
 	}
 }
 
@@ -34,14 +35,15 @@ func jobsToMaps(jobs []models.Job) []map[string]any {
 func jobFromMap(m map[string]any) models.Job {
 	postedAt, _ := time.Parse(time.RFC3339, asString(m["posted_at"]))
 	return models.Job{
-		CompanyID: asString(m["company_id"]),
-		Company:   asString(m["company"]),
-		JobID:     asString(m["job_id"]),
-		Title:     asString(m["title"]),
-		URL:       asString(m["url"]),
-		Location:  asString(m["location"]),
-		ATS:       asString(m["ats"]),
-		PostedAt:  postedAt,
+		CompanyID:   asString(m["company_id"]),
+		Company:     asString(m["company"]),
+		JobID:       asString(m["job_id"]),
+		Title:       asString(m["title"]),
+		URL:         asString(m["url"]),
+		Location:    asString(m["location"]),
+		Description: asString(m["description"]),
+		ATS:         asString(m["ats"]),
+		PostedAt:    postedAt,
 	}
 }
 
