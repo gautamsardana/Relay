@@ -98,13 +98,13 @@ export function renderWorkerNew(_params, mount) {
       ]),
       el("div", { class: "card form-card" }, [
         field("Name", name),
-        field("Category", category),
-        field("Keywords (optional)", keywords, "Comma separated, e.g. golang, kubernetes"),
         el("div", { class: "field" }, [
           el("label", { class: "label" }, "Résumé (PDF)"),
           resumeFile,
           resumeStatus,
         ]),
+        field("Category", category),
+        field("Keywords (optional)", keywords, "Comma separated, e.g. golang, kubernetes"),
         field("Notes (optional)", instructions, "Extra context for ranking jobs."),
         field("Run every (hours)", interval, "Minimum 1 hour."),
         sliderField(slider, sliderVal),

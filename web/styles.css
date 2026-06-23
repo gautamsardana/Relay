@@ -316,6 +316,10 @@ select.input option { background: var(--surface-2); color: var(--text); }
 .job-sub { font-size: 13px; margin-top: 2px; }
 .job-posted { font-size: 13px; white-space: nowrap; flex-shrink: 0; }
 .job-apply { flex-shrink: 0; }
+.job-apply.applied { background: var(--surface-2); border-color: var(--border); color: var(--muted); }
+.job-apply.applied:hover { border-color: var(--border); }
+.apply-confirm { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.apply-confirm-q { font-size: 13px; white-space: nowrap; }
 
 @media (max-width: 620px) {
   .job-posted { display: none; }

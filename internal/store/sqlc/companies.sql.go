@@ -46,6 +46,39 @@ func (q *Queries) ListActiveCompanies(ctx context.Context) ([]Company, error) {
 	return items, nil
 }
 
+const listAllCompanyKeys = `-- name: ListAllCompanyKeys :many
+SELECT ats, slug FROM companies
+`
+
+type ListAllCompanyKeysRow struct {
+	Ats  string `json:"ats"`
+	Slug string `json:"slug"`
+}
+
+// All (ats, slug) pairs regardless of status, for discovery dedup.
+func (q *Queries) ListAllCompanyKeys(ctx context.Context) ([]ListAllCompanyKeysRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllCompanyKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllCompanyKeysRow
+	for rows.Next() {
+		var i ListAllCompanyKeysRow
+		if err := rows.Scan(&i.Ats, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertCompany = `-- name: UpsertCompany :exec
 INSERT INTO companies (company_id, name, ats, slug)
 VALUES ($1, $2, $3, $4)

@@ -13,13 +13,21 @@ export function renderRun(params, mount) {
 
   let timer = null;
   let stopped = false;
+  let lastRun = null;
+  let lastSteps = null;
+
+  const rerender = () => {
+    if (lastRun) renderBody(body, lastRun, lastSteps, rerender);
+  };
 
   async function load() {
     try {
       const { run, steps } = await api.getRun(params.id);
       if (stopped) return;
+      lastRun = run;
+      lastSteps = steps;
       renderHead(head, run);
-      renderBody(body, run, steps);
+      renderBody(body, run, steps, rerender);
       const active = run.status === "init" || run.status === "processing";
       if (!active && timer) {
         clearInterval(timer);
@@ -35,12 +43,17 @@ export function renderRun(params, mount) {
     }
   }
 
+  // When the user returns to our tab (e.g. back from applying), re-render so any
+  // job they clicked Apply on shows the "Did you apply?" confirm.
+  window.addEventListener("focus", rerender);
+
   load();
   timer = setInterval(load, POLL_MS);
 
   return () => {
     stopped = true;
     if (timer) clearInterval(timer);
+    window.removeEventListener("focus", rerender);
   };
 }
 
@@ -60,7 +73,7 @@ function renderHead(head, run) {
   );
 }
 
-function renderBody(body, run, steps) {
+function renderBody(body, run, steps, rerender) {
   clear(body);
   body.append(renderProgress(steps));
 
@@ -77,7 +90,7 @@ function renderBody(body, run, steps) {
     return;
   }
 
-  renderResults(body, steps);
+  renderResults(body, steps, rerender);
 }
 
 // ---- progress tracker (per-step status, no output) ----
@@ -112,7 +125,7 @@ function dotMark(status, num) {
 }
 
 // ---- final results ----
-function renderResults(body, steps) {
+function renderResults(body, steps, rerender) {
   const jobs = finalRankedJobs(steps);
 
   if (jobs === null) {
@@ -132,7 +145,7 @@ function renderResults(body, steps) {
   }
 
   const list = el("div", { class: "job-list" });
-  for (const j of jobs) list.append(jobRow(j));
+  for (const j of jobs) list.append(jobRow(j, rerender));
   body.append(list);
 }
 
@@ -145,7 +158,7 @@ function finalRankedJobs(steps) {
   return null;
 }
 
-function jobRow(j) {
+function jobRow(j, rerender) {
   const score = Math.round((Number(j.score) || 0) * 100);
   const posted = timeAgo(j.posted_at);
 
@@ -160,18 +173,73 @@ function jobRow(j) {
       el("span", { class: "job-score-num" }, String(score)),
       el("span", { class: "job-score-label" }, "match"),
     ]),
-    el(
-      "a",
-      {
-        class: "btn btn-primary btn-sm job-apply",
-        href: j.url || "#",
-        target: "_blank",
-        rel: "noopener noreferrer",
-      },
-      "Apply now →"
-    ),
+    applyButton(j, rerender),
   ]);
 }
+
+// applyButton has three states: not-yet (Apply link), pending (clicked Apply,
+// waiting to confirm → "Applied? Yes/No"), and done (Applied ✓). Clicking Apply
+// opens the job and marks it pending; the run view re-renders on tab-focus, so
+// when the user comes back the row asks whether they applied.
+function applyButton(j, rerender) {
+  const jobId = j.job_id || "";
+
+  if (isApplied(jobId)) {
+    return el(
+      "a",
+      { class: "btn btn-primary btn-sm job-apply applied", href: j.url || "#", target: "_blank", rel: "noopener noreferrer" },
+      "Applied ✓"
+    );
+  }
+
+  if (isPending(jobId)) {
+    return el("div", { class: "apply-confirm" }, [
+      el("span", { class: "apply-confirm-q muted" }, "Applied?"),
+      el("button", {
+        class: "btn btn-primary btn-sm",
+        onClick: () => { markApplied(jobId); clearPending(jobId); rerender(); },
+      }, "Yes"),
+      el("button", {
+        class: "btn btn-ghost btn-sm",
+        onClick: () => { clearPending(jobId); rerender(); },
+      }, "No"),
+    ]);
+  }
+
+  const a = el(
+    "a",
+    { class: "btn btn-primary btn-sm job-apply", href: j.url || "#", target: "_blank", rel: "noopener noreferrer" },
+    "Apply now →"
+  );
+  a.addEventListener("click", () => setPending(jobId));
+  return a;
+}
+
+// localStorage-backed sets keyed by job_id. "applied" = confirmed; "pending" =
+// clicked Apply, awaiting the "did you apply?" confirmation.
+function lsSet(key) {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(key) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function lsAdd(key, jobId) {
+  const s = lsSet(key);
+  s.add(jobId);
+  localStorage.setItem(key, JSON.stringify([...s]));
+}
+function lsRemove(key, jobId) {
+  const s = lsSet(key);
+  s.delete(jobId);
+  localStorage.setItem(key, JSON.stringify([...s]));
+}
+
+function isApplied(jobId) { return jobId !== "" && lsSet("relay.applied").has(jobId); }
+function markApplied(jobId) { if (jobId) lsAdd("relay.applied", jobId); }
+function isPending(jobId) { return jobId !== "" && lsSet("relay.pendingApply").has(jobId); }
+function setPending(jobId) { if (jobId) lsAdd("relay.pendingApply", jobId); }
+function clearPending(jobId) { if (jobId) lsRemove("relay.pendingApply", jobId); }
 
 // Company logo via Clearbit (guessing {slug}.com). Falls back to a monogram
 // avatar when the logo 404s or the real domain isn't {slug}.com.

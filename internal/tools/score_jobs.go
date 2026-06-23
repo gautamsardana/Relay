@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -21,11 +22,19 @@ const recencyWindow = 30 * 24 * time.Hour
 // (best-first pagination) rather than being silently dropped.
 const maxRankedResults = 25
 
-// maxJobsToScore bounds how many jobs we send to the LLM in one run. Kept small
-// so a single request stays well under provider per-minute token limits (e.g.
-// Groq free tier is 12k TPM). We score the most-recent N; any beyond that get
-// fit 0 and rank on recency alone.
-const maxJobsToScore = 30
+// Scoring is split into throttled batches so we can evaluate a large slice of
+// the candidate set per run (not just the freshest few) without tripping the
+// provider's per-minute token limit (Groq free tier ≈ 12k TPM). Runs are
+// background jobs, so a couple of minutes is fine. scoreBudget caps total jobs
+// scored per run; batchSize per LLM call; batchDelay throttles between calls.
+const (
+	scoreBudget = 100
+	batchSize   = 20
+	batchDelay  = 35 * time.Second
+)
+
+// scoreThreshold drops weak matches: we don't surface anything below this blended score.
+const scoreThreshold = 0.5
 
 // scoringDescriptionChars / scoringResumeChars cap text sent to the LLM. The
 // opening of a description and résumé carry most of the matching signal, so
@@ -74,11 +83,7 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	// fit is 0..1 per job_id. Skip the LLM entirely when recency is weighted 100%.
 	fit := map[string]float64{}
 	if exec.RecencyWeight < 100 {
-		scored, err := sj.scoreFit(ctx, buildIntent(exec), exec.ResumeText, jobsToScore(jobs))
-		if err != nil {
-			return nil, fmt.Errorf("score_jobs: fit scoring: %w", err)
-		}
-		fit = scored
+		fit = sj.scoreFitBatched(ctx, buildIntent(exec), exec.ResumeText, jobs)
 	}
 
 	type rankedJob struct {
@@ -94,6 +99,15 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 		ranked = append(ranked, rankedJob{job: job, fit: f, recency: r, final: w*r + (1-w)*f})
 	}
 	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].final > ranked[j].final })
+
+	// Drop weak matches entirely (better to show a few great ones than pad).
+	kept := make([]rankedJob, 0, len(ranked))
+	for _, rj := range ranked {
+		if rj.final >= scoreThreshold {
+			kept = append(kept, rj)
+		}
+	}
+	ranked = kept
 
 	// Keep only the best N. The rest stay unseen and come back next run.
 	if len(ranked) > maxRankedResults {
@@ -145,14 +159,45 @@ func truncateChars(s string, n int) string {
 	return string(r[:n])
 }
 
-// jobsToScore caps LLM input to the most-recent maxJobsToScore jobs.
-func jobsToScore(jobs []models.Job) []models.Job {
-	if len(jobs) <= maxJobsToScore {
+// mostRecent returns the n most-recently-posted jobs.
+func mostRecent(jobs []models.Job, n int) []models.Job {
+	if len(jobs) <= n {
 		return jobs
 	}
 	sorted := append([]models.Job(nil), jobs...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].PostedAt.After(sorted[j].PostedAt) })
-	return sorted[:maxJobsToScore]
+	return sorted[:n]
+}
+
+// scoreFitBatched scores up to scoreBudget jobs (most recent) across several LLM
+// calls, throttled to respect the per-minute token limit. Returns job_id → fit
+// (0..1). On a batch error (e.g. rate limit), it keeps what it has so the run
+// still completes; unscored jobs simply rank on recency this run.
+func (sj *ScoreJobs) scoreFitBatched(ctx context.Context, intent, resume string, jobs []models.Job) map[string]float64 {
+	jobs = mostRecent(jobs, scoreBudget)
+	fit := make(map[string]float64, len(jobs))
+	for i := 0; i < len(jobs); i += batchSize {
+		end := i + batchSize
+		if end > len(jobs) {
+			end = len(jobs)
+		}
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return fit
+			case <-time.After(batchDelay):
+			}
+		}
+		scores, err := sj.scoreFit(ctx, intent, resume, jobs[i:end])
+		if err != nil {
+			slog.Warn("score_jobs: batch scoring failed", "error", err, "batch_start", i)
+			break
+		}
+		for k, v := range scores {
+			fit[k] = v
+		}
+	}
+	return fit
 }
 
 // scoreFit asks the LLM for a 0..100 fit score per job and returns job_id → 0..1.
@@ -187,7 +232,12 @@ func (sj *ScoreJobs) scoreFit(ctx context.Context, instructions, resume string, 
 		resume = truncateChars(resume, scoringResumeChars)
 	}
 
-	system := `You are a job-matching assistant. Using each job's title and description, score how well it matches BOTH what the user is looking for AND their résumé, on a scale of 0 to 100 (100 = ideal match). Weigh required skills, seniority level, location, and domain. A job that ignores the user's stated criteria (e.g. wrong role, wrong seniority, wrong location) should score low even if the company is appealing. Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. No prose, no markdown.`
+	system := `You are a strict job-matching assistant. For each job, use its title and description to score how well it matches BOTH what the user is looking for AND their résumé, from 0 to 100.
+Be strict and deterministic:
+- Infer the candidate's seniority/years of experience from the résumé. HEAVILY penalize roles that require clearly more seniority than the candidate has (e.g. Staff, Principal, Lead, Director, or "8+ years" roles for a mid-level candidate) even if the skills match — score those under 30.
+- Penalize wrong role, wrong domain, or a location that conflicts with the user's stated preference.
+- Reserve 70+ for genuinely strong matches in the right role, level, and domain.
+Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. No prose, no markdown.`
 	user := fmt.Sprintf("What the user is looking for:\n%s\n\nCandidate résumé:\n%s\n\nJobs to score:\n%s\n\nReturn the JSON array now.", instructions, resume, jobsJSON)
 
 	raw, err := sj.llm.Complete(ctx, system, user)
