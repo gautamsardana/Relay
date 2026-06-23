@@ -203,6 +203,8 @@ type Worker struct {
 	Status          WorkerStatus   `json:"status"`
 	ResumeText      sql.NullString `json:"resume_text"`
 	RecencyWeight   int32          `json:"recency_weight"`
+	Category        string         `json:"category"`
+	Keywords        string         `json:"keywords"`
 	NextRunAt       sql.NullTime   `json:"next_run_at"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`

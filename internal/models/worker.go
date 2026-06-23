@@ -15,6 +15,8 @@ type Worker struct {
 	UserID          string
 	Name            string
 	Instructions    string
+	Category        string
+	Keywords        []string
 	IntervalSeconds int
 	Status          WorkerStatus
 	ResumeText      string

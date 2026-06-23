@@ -3,11 +3,30 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/gautamsardana/relay/internal/models"
 	"github.com/gautamsardana/relay/internal/store/sqlc"
 )
+
+func joinCSV(items []string) string {
+	return strings.Join(items, ",")
+}
+
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
 
 // toModelStep converts a sqlc-generated Step to a models.Step
 func toModelStep(ss *sqlc.Step) models.Step {
@@ -125,6 +144,8 @@ func toModelWorker(sw *sqlc.Worker) models.Worker {
 		UserID:          sw.UserID,
 		Name:            sw.Name,
 		Instructions:    sw.Instructions,
+		Category:        sw.Category,
+		Keywords:        splitCSV(sw.Keywords),
 		IntervalSeconds: int(sw.IntervalSeconds),
 		Status:          models.WorkerStatus(sw.Status),
 		ResumeText:      sw.ResumeText.String,
@@ -145,6 +166,8 @@ func fromModelWorkerCreate(mw *models.Worker) sqlc.CreateWorkerParams {
 		UserID:          mw.UserID,
 		Name:            mw.Name,
 		Instructions:    mw.Instructions,
+		Category:        mw.Category,
+		Keywords:        joinCSV(mw.Keywords),
 		IntervalSeconds: int32(mw.IntervalSeconds),
 		Status:          sqlc.WorkerStatus(mw.Status),
 		ResumeText:      sql.NullString{String: mw.ResumeText, Valid: mw.ResumeText != ""},

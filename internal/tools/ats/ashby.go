@@ -37,6 +37,8 @@ func (a *ashbyAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 			JobURL           string `json:"jobUrl"`
 			PublishedAt      string `json:"publishedAt"`
 			DescriptionPlain string `json:"descriptionPlain"`
+			Department       string `json:"department"`
+			Team             string `json:"team"`
 		} `json:"jobs"`
 	}
 	if err := getJSON(ctx, a.client, url, &body); err != nil {
@@ -53,6 +55,8 @@ func (a *ashbyAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 			Title:       j.Title,
 			URL:         j.JobURL,
 			Location:    j.Location,
+			Department:  j.Department,
+			Team:        j.Team,
 			Description: cleanText(j.DescriptionPlain),
 			ATS:         Ashby,
 			PostedAt:    postedAt,

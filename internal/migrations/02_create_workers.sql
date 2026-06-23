@@ -9,6 +9,8 @@ CREATE TABLE workers (
     status       worker_status NOT NULL DEFAULT 'active',
     resume_text  TEXT,
     recency_weight INT NOT NULL DEFAULT 50,   -- 0..100: how much to weight recency vs resume-fit
+    category     TEXT NOT NULL DEFAULT '',
+    keywords     TEXT NOT NULL DEFAULT '',     -- comma-separated
     next_run_at  TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()

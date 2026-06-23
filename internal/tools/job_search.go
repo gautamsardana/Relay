@@ -31,17 +31,14 @@ func NewJobSearch(s *store.Store) *JobSearch {
 func (j *JobSearch) Name() string { return "job_search" }
 
 func (j *JobSearch) Description() string {
-	return `Searches curated company job boards (Greenhouse, Lever, Ashby) for open roles and
-returns only NEW matches for this worker — jobs already shown in past runs are filtered out automatically.
-Input: {"role_keywords": ["backend", "golang", "infrastructure"]}
-  - role_keywords: list of terms matched against job titles (case-insensitive). Omit to return all open roles.
-Output: {"jobs": [{"company": "Stripe", "title": "Backend Engineer", "url": "...", "location": "Remote", "posted_at": "2026-06-10T...", "company_id": "stripe", "job_id": "123", "ats": "greenhouse"}]}
-Use this as the first step of a job hunt, then pass its output to score_jobs to rank the results.`
+	return `Searches curated company job boards (Greenhouse, Lever, Ashby) and returns only NEW
+matches for this worker (jobs shown in past runs are filtered out). It filters by the worker's
+configured category (against ATS department metadata) and keywords, and takes no input.
+Output: {"jobs": [{"company": "Stripe", "title": "Backend Engineer", "url": "...", "location": "Remote", "department": "Engineering", "posted_at": "...", "company_id": "stripe", "job_id": "123", "ats": "greenhouse"}]}
+Use this as the first step of a job hunt, then pass its output to score_jobs.`
 }
 
 func (j *JobSearch) Execute(ctx context.Context, input map[string]any, exec ExecutionContext) (map[string]any, error) {
-	keywords := parseKeywords(input["role_keywords"])
-
 	companies, err := j.store.ListActiveCompanies(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("job_search: list companies: %w", err)
@@ -50,7 +47,7 @@ func (j *JobSearch) Execute(ctx context.Context, input map[string]any, exec Exec
 	allJobs := j.fetchAll(ctx, companies)
 	slog.Info("job_search: fetched jobs", "companies", len(companies), "jobs", len(allJobs))
 
-	matched := filterByKeywords(allJobs, keywords)
+	matched := filterJobs(allJobs, exec.Category, exec.Keywords)
 
 	seen, err := j.store.ListSeenJobKeys(ctx, exec.WorkerID)
 	if err != nil {
@@ -98,29 +95,35 @@ func (j *JobSearch) fetchAll(ctx context.Context, companies []models.Company) []
 	return all
 }
 
-// filterByKeywords keeps jobs where any keyword appears as a whole word in the
-// title OR description. Whole-word matching avoids substring false positives
-// (e.g. "go" matching "logo"), and searching the description (not just the
+// filterJobs keeps jobs matching the worker's category (against ATS department/
+// team metadata) AND its keywords (whole-word over title+description). Each
+// filter is applied only when set. Whole-word matching avoids substring false
+// positives (e.g. "go" matching "logo"); searching the description (not just the
 // title) is what stops us dropping relevant roles whose titles are generic
 // (e.g. "Backend Engineer" whose description says "Go"). This is a recall net;
 // precision is the scorer's job.
-func filterByKeywords(jobs []models.Job, keywords []string) []models.Job {
-	matchers := compileKeywordMatchers(keywords)
-	if len(matchers) == 0 {
-		return jobs
-	}
-
+func filterJobs(jobs []models.Job, category string, keywords []string) []models.Job {
+	kwMatchers := compileKeywordMatchers(keywords)
 	out := make([]models.Job, 0, len(jobs))
 	for _, job := range jobs {
-		haystack := job.Title + " " + job.Description
-		for _, re := range matchers {
-			if re.MatchString(haystack) {
-				out = append(out, job)
-				break
-			}
+		if !matchesCategory(job, category) {
+			continue
 		}
+		if len(kwMatchers) > 0 && !matchesAny(kwMatchers, job.Title+" "+job.Description) {
+			continue
+		}
+		out = append(out, job)
 	}
 	return out
+}
+
+func matchesAny(matchers []*regexp.Regexp, haystack string) bool {
+	for _, re := range matchers {
+		if re.MatchString(haystack) {
+			return true
+		}
+	}
+	return false
 }
 
 func compileKeywordMatchers(keywords []string) []*regexp.Regexp {
@@ -149,31 +152,4 @@ func dropSeen(jobs []models.Job, seen store.SeenJobSet) []models.Job {
 		out = append(out, job)
 	}
 	return out
-}
-
-// parseKeywords accepts the LLM-supplied role_keywords as a JSON array, a Go
-// []string, or a comma-separated string.
-func parseKeywords(v any) []string {
-	switch val := v.(type) {
-	case []any:
-		out := make([]string, 0, len(val))
-		for _, item := range val {
-			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-				out = append(out, strings.TrimSpace(s))
-			}
-		}
-		return out
-	case []string:
-		return val
-	case string:
-		var out []string
-		for _, s := range strings.Split(val, ",") {
-			if strings.TrimSpace(s) != "" {
-				out = append(out, strings.TrimSpace(s))
-			}
-		}
-		return out
-	default:
-		return nil
-	}
 }

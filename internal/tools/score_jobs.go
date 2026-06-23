@@ -21,10 +21,19 @@ const recencyWindow = 30 * 24 * time.Hour
 // (best-first pagination) rather than being silently dropped.
 const maxRankedResults = 25
 
-// maxJobsToScore bounds how many jobs we send to the LLM in one run (token
-// guard, mainly for a worker's first run when everything is new). We score the
-// most-recent N; any beyond that get fit 0 and rank on recency alone.
-const maxJobsToScore = 100
+// maxJobsToScore bounds how many jobs we send to the LLM in one run. Kept small
+// so a single request stays well under provider per-minute token limits (e.g.
+// Groq free tier is 12k TPM). We score the most-recent N; any beyond that get
+// fit 0 and rank on recency alone.
+const maxJobsToScore = 30
+
+// scoringDescriptionChars / scoringResumeChars cap text sent to the LLM. The
+// opening of a description and résumé carry most of the matching signal, so
+// trimming them keeps the request small without hurting ranking much.
+const (
+	scoringDescriptionChars = 400
+	scoringResumeChars      = 3000
+)
 
 // Completer is the slice of the agent we need: a single raw LLM completion.
 // Declared here (not imported from agent) to avoid an import cycle, since the
@@ -65,7 +74,7 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	// fit is 0..1 per job_id. Skip the LLM entirely when recency is weighted 100%.
 	fit := map[string]float64{}
 	if exec.RecencyWeight < 100 {
-		scored, err := sj.scoreFit(ctx, exec.Instructions, exec.ResumeText, jobsToScore(jobs))
+		scored, err := sj.scoreFit(ctx, buildIntent(exec), exec.ResumeText, jobsToScore(jobs))
 		if err != nil {
 			return nil, fmt.Errorf("score_jobs: fit scoring: %w", err)
 		}
@@ -112,6 +121,30 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	return map[string]any{"ranked_jobs": out}, nil
 }
 
+// buildIntent describes what the user is looking for, from the worker's
+// structured config, for the scorer to weigh alongside the résumé.
+func buildIntent(exec ExecutionContext) string {
+	var b strings.Builder
+	if exec.Category != "" {
+		b.WriteString("Category: " + exec.Category + ". ")
+	}
+	if len(exec.Keywords) > 0 {
+		b.WriteString("Must relate to: " + strings.Join(exec.Keywords, ", ") + ". ")
+	}
+	if strings.TrimSpace(exec.Instructions) != "" {
+		b.WriteString("Notes: " + exec.Instructions)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func truncateChars(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
 // jobsToScore caps LLM input to the most-recent maxJobsToScore jobs.
 func jobsToScore(jobs []models.Job) []models.Job {
 	if len(jobs) <= maxJobsToScore {
@@ -140,7 +173,7 @@ func (sj *ScoreJobs) scoreFit(ctx context.Context, instructions, resume string, 
 			Title:       j.Title,
 			Company:     j.Company,
 			Location:    j.Location,
-			Description: j.Description,
+			Description: truncateChars(j.Description, scoringDescriptionChars),
 		}
 	}
 	jobsJSON, _ := json.Marshal(briefs)
@@ -150,6 +183,8 @@ func (sj *ScoreJobs) scoreFit(ctx context.Context, instructions, resume string, 
 	}
 	if strings.TrimSpace(resume) == "" {
 		resume = "(not provided)"
+	} else {
+		resume = truncateChars(resume, scoringResumeChars)
 	}
 
 	system := `You are a job-matching assistant. Using each job's title and description, score how well it matches BOTH what the user is looking for AND their résumé, on a scale of 0 to 100 (100 = ideal match). Weigh required skills, seniority level, location, and domain. A job that ignores the user's stated criteria (e.g. wrong role, wrong seniority, wrong location) should score low even if the company is appealing. Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. No prose, no markdown.`

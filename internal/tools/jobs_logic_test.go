@@ -9,13 +9,12 @@ import (
 	"github.com/gautamsardana/relay/internal/store"
 )
 
-func TestFilterByKeywords(t *testing.T) {
+func TestFilterJobs(t *testing.T) {
 	jobs := []models.Job{
-		{JobID: "1", Title: "Senior Backend Engineer", Description: "We build payments infra in Go."},
-		{JobID: "2", Title: "Product Designer", Description: "Design our logo and brand."},
-		{JobID: "3", Title: "Platform Engineer", Description: "Golang, Kubernetes, distributed systems."},
+		{JobID: "1", Title: "Backend Engineer", Department: "Engineering", Description: "We build payments in Go."},
+		{JobID: "2", Title: "Brand Designer", Department: "Design", Description: "Design our logo."},
+		{JobID: "3", Title: "Platform Engineer", Department: "Engineering", Description: "Golang, Kubernetes."},
 	}
-
 	contains := func(js []models.Job, id string) bool {
 		for _, j := range js {
 			if j.JobID == id {
@@ -25,36 +24,34 @@ func TestFilterByKeywords(t *testing.T) {
 		return false
 	}
 
-	// "golang" is in no title, only job 3's description. Title-only matching
-	// would have returned nothing; searching the description finds it.
-	got := filterByKeywords(jobs, []string{"golang"})
+	// category only: engineering dept → jobs 1 and 3, not the designer
+	got := filterJobs(jobs, "software_engineering", nil)
+	if len(got) != 2 || !contains(got, "1") || !contains(got, "3") {
+		t.Fatalf("category filter: %+v", got)
+	}
+
+	// category + keyword: must be engineering AND mention "go" (whole word).
+	// "Golang" does NOT contain the whole word "go", so only job 1 matches.
+	got = filterJobs(jobs, "software_engineering", []string{"go"})
+	if len(got) != 1 || !contains(got, "1") {
+		t.Fatalf("category+keyword filter: %+v", got)
+	}
+
+	// keyword recall via description (no category): "golang" is in no title,
+	// only job 3's description.
+	got = filterJobs(jobs, "", []string{"golang"})
 	if len(got) != 1 || !contains(got, "3") {
-		t.Fatalf("golang should match only job 3 (via description), got %+v", got)
+		t.Fatalf("golang via description: %+v", got)
 	}
 
-	// Whole-word "go": matches job 1 ("in Go.") but NOT job 2 ("logo") — the
-	// substring trap the old filter fell into.
-	got = filterByKeywords(jobs, []string{"go"})
-	if !contains(got, "1") {
-		t.Fatalf(`"go" should match job 1 (description "in Go."), got %+v`, got)
-	}
-	if contains(got, "2") {
-		t.Fatalf(`"go" must NOT match job 2 ("logo"), got %+v`, got)
+	// whole-word "go" must not match "logo" (job 2)
+	if got = filterJobs(jobs, "", []string{"go"}); contains(got, "2") {
+		t.Fatalf(`"go" must not match "logo": %+v`, got)
 	}
 
-	// title match still works
-	if got = filterByKeywords(jobs, []string{"backend"}); !contains(got, "1") {
-		t.Fatalf("backend should match job 1, got %+v", got)
-	}
-
-	// no keywords → all jobs pass through
-	if all := filterByKeywords(jobs, nil); len(all) != 3 {
-		t.Fatalf("empty keywords should return all, got %d", len(all))
-	}
-
-	// no matches → empty
-	if none := filterByKeywords(jobs, []string{"marketing"}); len(none) != 0 {
-		t.Fatalf("want 0 matches, got %d", len(none))
+	// no filters → all
+	if all := filterJobs(jobs, "", nil); len(all) != 3 {
+		t.Fatalf("no filters should return all, got %d", len(all))
 	}
 }
 
@@ -69,26 +66,6 @@ func TestDropSeen(t *testing.T) {
 	got := dropSeen(jobs, seen)
 	if len(got) != 1 || got[0].JobID != "2" {
 		t.Fatalf("expected only stripe/2 to survive, got %+v", got)
-	}
-}
-
-func TestParseKeywords(t *testing.T) {
-	cases := []struct {
-		name string
-		in   any
-		want int
-	}{
-		{"json array", []any{"backend", "go", ""}, 2}, // empty string dropped
-		{"go slice", []string{"a", "b"}, 2},
-		{"csv string", "backend, go , ", 2},
-		{"nil", nil, 0},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := parseKeywords(c.in); len(got) != c.want {
-				t.Fatalf("want %d, got %d (%v)", c.want, len(got), got)
-			}
-		})
 	}
 }
 

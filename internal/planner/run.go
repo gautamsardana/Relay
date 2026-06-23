@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/gautamsardana/relay/internal/models"
@@ -12,75 +11,61 @@ import (
 	"github.com/google/uuid"
 )
 
+// HandleRun builds the deterministic job-hunt pipeline (job_search → score_jobs)
+// and publishes the first step. There is no LLM planning: the worker is always a
+// job hunter, both steps read their config from the ExecutionContext, and the
+// LLM is used only for scoring inside score_jobs. This removes the wrong-tool /
+// template-resolution failures that LLM-generated plans caused.
 func (p *Planner) HandleRun(worker models.Worker, run models.Run) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	slog.Info("generating plan", "run_id", run.RunID, "worker_id", worker.WorkerID)
-	steps, err := p.agent.GeneratePlan(ctx, worker.Instructions, p.registry.All())
-	if err != nil {
-		p.failRun(ctx, &run, err)
-		return
-	}
+	slog.Info("building job-hunt plan", "run_id", run.RunID, "worker_id", worker.WorkerID)
 
-	slog.Info("validating tools", "run_id", run.RunID)
-	for _, step := range steps {
-		_, toolExists := p.registry.Get(step.Tool)
-		if !toolExists {
-			p.failRun(ctx, &run, fmt.Errorf("invalid tool used in steps: %s", step.Tool))
-			return
-		}
+	searchID, _ := uuid.NewV7()
+	scoreID, _ := uuid.NewV7()
+	modelSteps := []models.Step{
+		{
+			StepID:      searchID.String(),
+			RunID:       run.RunID,
+			StepNumber:  1,
+			Tool:        "job_search",
+			Description: "Find new matching jobs",
+			Input:       map[string]any{},
+			Status:      models.StepStatusInit,
+		},
+		{
+			StepID:      scoreID.String(),
+			RunID:       run.RunID,
+			StepNumber:  2,
+			Tool:        "score_jobs",
+			Description: "Rank jobs by fit and recency",
+			Input:       map[string]any{"jobs": "{{steps[1].output.jobs}}"},
+			Status:      models.StepStatusInit,
+		},
 	}
 
 	slog.Info("writing steps to store", "run_id", run.RunID)
-	modelSteps := make([]models.Step, len(steps))
-
-	for i, step := range steps {
-		stepID, _ := uuid.NewV7()
-
-		modelSteps[i] = models.Step{
-			StepID:      stepID.String(),
-			RunID:       run.RunID,
-			StepNumber:  step.StepNumber,
-			Tool:        step.Tool,
-			Description: step.Description,
-			Input:       step.Input,
-			Status:      models.StepStatusInit,
-			RetryCount:  0,
-		}
-	}
-
-	err = p.store.InsertSteps(ctx, modelSteps)
-	if err != nil {
+	if err := p.store.InsertSteps(ctx, modelSteps); err != nil {
 		p.failRun(ctx, &run, err)
 		return
 	}
 
 	slog.Info("marking run as processing", "run_id", run.RunID)
-	err = p.store.UpdateRunStatus(ctx, run.RunID, models.RunStatusProcessing, "")
-	if err != nil {
+	if err := p.store.UpdateRunStatus(ctx, run.RunID, models.RunStatusProcessing, ""); err != nil {
 		p.failRun(ctx, &run, err)
 		return
 	}
 
-	slog.Info("publishing first step", "run_id", run.RunID)
-	sort.Slice(modelSteps, func(i, j int) bool {
-		return modelSteps[i].StepNumber < modelSteps[j].StepNumber
-	})
-	if len(modelSteps) == 0 {
-		p.failRun(ctx, &run, fmt.Errorf("no steps defined for this run"))
-		return
-	}
 	firstStep := modelSteps[0]
-
-	err = p.store.MarkStepPending(ctx, firstStep.StepID)
-	if err != nil {
+	slog.Info("marking step as pending", "step_id", firstStep.StepID)
+	if err := p.store.MarkStepPending(ctx, firstStep.StepID); err != nil {
 		p.failRun(ctx, &run, fmt.Errorf("failed to mark first step pending: %w", err))
 		return
 	}
 
-	err = p.queue.PublishStep(ctx, queue.StepEvent{RunID: run.RunID, StepID: firstStep.StepID})
-	if err != nil {
+	slog.Info("publishing first step", "run_id", run.RunID, "step_id", firstStep.StepID)
+	if err := p.queue.PublishStep(ctx, queue.StepEvent{RunID: run.RunID, StepID: firstStep.StepID}); err != nil {
 		p.failRun(ctx, &run, err)
 		return
 	}

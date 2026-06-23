@@ -14,6 +14,8 @@ type ExecutionContext struct {
     RunID         string
     WorkerID      string
     Instructions  string
+    Category      string
+    Keywords      []string
     ResumeText    string
     RecencyWeight int
 }

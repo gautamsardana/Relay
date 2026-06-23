@@ -30,6 +30,8 @@ const normWorker = (w) =>
     user_id: w.UserID,
     name: w.Name,
     instructions: w.Instructions,
+    category: w.Category,
+    keywords: w.Keywords || [],
     interval_seconds: w.IntervalSeconds,
     status: w.Status,
     resume_text: w.ResumeText,
@@ -88,5 +90,22 @@ export const api = {
   async getRun(id) {
     const d = await request("GET", `/runs/${id}`);
     return { run: normRun(d.run), steps: (d.steps || []).map(normStep) };
+  },
+  async setWorkerStatus(id, status) {
+    await request("PATCH", `/workers/${id}/status`, { status });
+  },
+  // Multipart upload — not via request() (which forces a JSON content-type);
+  // the browser must set the multipart boundary itself.
+  async parseResume(file) {
+    const fd = new FormData();
+    fd.append("resume", file);
+    const res = await fetch("/resumes/parse", { method: "POST", body: fd });
+    if (!res.ok) throw new Error((await res.text()) || res.statusText);
+    const d = await res.json();
+    return {
+      resume_text: d.resume_text || "",
+      suggested_category: d.suggested_category || "",
+      suggested_keywords: d.suggested_keywords || [],
+    };
   },
 };

@@ -34,7 +34,9 @@ func (l *leverAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 		CreatedAt        int64  `json:"createdAt"` // epoch milliseconds
 		DescriptionPlain string `json:"descriptionPlain"`
 		Categories       struct {
-			Location string `json:"location"`
+			Location   string `json:"location"`
+			Department string `json:"department"`
+			Team       string `json:"team"`
 		} `json:"categories"`
 	}
 	if err := getJSON(ctx, l.client, url, &postings); err != nil {
@@ -54,6 +56,8 @@ func (l *leverAdapter) Fetch(ctx context.Context, slug, companyName string) ([]m
 			Title:       p.Text,
 			URL:         p.HostedURL,
 			Location:    p.Categories.Location,
+			Department:  p.Categories.Department,
+			Team:        p.Categories.Team,
 			Description: cleanText(p.DescriptionPlain),
 			ATS:         Lever,
 			PostedAt:    postedAt,

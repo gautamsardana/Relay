@@ -11,6 +11,8 @@ type Job struct {
 	Title       string
 	URL         string
 	Location    string
+	Department  string    // from ATS metadata; used for category matching
+	Team        string    // from ATS metadata; used for category matching
 	Description string    // plain-text role description, trimmed; used for résumé scoring
 	ATS         string    // greenhouse | lever | ashby
 	PostedAt    time.Time // normalized from each board's date field

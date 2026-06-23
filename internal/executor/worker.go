@@ -157,6 +157,8 @@ func (w *Worker) buildExecutionContext(ctx context.Context, runID string) (tools
 		RunID:         runID,
 		WorkerID:      worker.WorkerID,
 		Instructions:  worker.Instructions,
+		Category:      worker.Category,
+		Keywords:      worker.Keywords,
 		ResumeText:    worker.ResumeText,
 		RecencyWeight: worker.RecencyWeight,
 	}, nil

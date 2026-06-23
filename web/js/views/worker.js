@@ -35,6 +35,28 @@ function renderDetail(container, worker, runs) {
     }
   });
 
+  const pauseBtn = el("button", { class: "btn btn-secondary" }, worker.status === "paused" ? "Resume" : "Pause");
+  pauseBtn.addEventListener("click", async () => {
+    const next = worker.status === "paused" ? "active" : "paused";
+    try {
+      await api.setWorkerStatus(worker.worker_id, next);
+      navigate(`/workers/${worker.worker_id}`); // re-render
+    } catch (e) {
+      alert("Failed: " + e.message);
+    }
+  });
+
+  const delBtn = el("button", { class: "btn btn-ghost" }, "Delete");
+  delBtn.addEventListener("click", async () => {
+    if (!confirm(`Delete worker "${worker.name}"? It will be archived and hidden.`)) return;
+    try {
+      await api.setWorkerStatus(worker.worker_id, "archived");
+      navigate("/workers");
+    } catch (e) {
+      alert("Failed: " + e.message);
+    }
+  });
+
   container.append(
     el("div", { class: "page-head" }, [
       el("div", {}, [
@@ -45,14 +67,18 @@ function renderDetail(container, worker, runs) {
           el("span", {}, `Next: ${formatDate(worker.next_run_at)}`),
         ]),
       ]),
-      runNow,
+      el("div", { class: "head-actions" }, [pauseBtn, delBtn, runNow]),
     ])
   );
 
+  const bits = [];
+  if (worker.category) bits.push(prettyCategory(worker.category));
+  if (worker.keywords && worker.keywords.length) bits.push(worker.keywords.join(", "));
   container.append(
     el("div", { class: "card" }, [
-      el("h4", { class: "section-label" }, "Instructions"),
-      el("p", {}, worker.instructions || "—"),
+      el("h4", { class: "section-label" }, "Search"),
+      el("p", {}, bits.length ? bits.join(" · ") : "—"),
+      worker.instructions ? el("p", { class: "muted" }, worker.instructions) : null,
     ])
   );
 
@@ -75,4 +101,11 @@ function renderDetail(container, worker, runs) {
     );
   }
   container.append(list);
+}
+
+function prettyCategory(c) {
+  return c
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

@@ -1,21 +1,21 @@
 -- name: CreateWorker :one
-INSERT INTO workers (worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at, created_at, updated_at;
+INSERT INTO workers (worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, category, keywords, next_run_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, category, keywords, next_run_at, created_at, updated_at;
 
 -- name: GetWorkerByID :one
-SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at, created_at, updated_at
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, category, keywords, next_run_at, created_at, updated_at
 FROM workers
 WHERE worker_id = $1;
 
 -- name: ListWorkersByUser :many
-SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at, created_at, updated_at
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, category, keywords, next_run_at, created_at, updated_at
 FROM workers
-WHERE user_id = $1
+WHERE user_id = $1 AND status != 'archived'
 ORDER BY created_at DESC;
 
 -- name: ListDueWorkers :many
-SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, next_run_at, created_at, updated_at
+SELECT worker_id, user_id, name, instructions, interval_seconds, status, resume_text, recency_weight, category, keywords, next_run_at, created_at, updated_at
 FROM workers
 WHERE status = 'active' AND next_run_at <= NOW();
 
