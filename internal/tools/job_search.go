@@ -47,7 +47,7 @@ func (j *JobSearch) Execute(ctx context.Context, input map[string]any, exec Exec
 	allJobs := j.fetchAll(ctx, companies)
 	slog.Info("job_search: fetched jobs", "companies", len(companies), "jobs", len(allJobs))
 
-	matched := filterJobs(allJobs, exec.Category, exec.Keywords)
+	matched := filterJobs(allJobs, exec.Category, exec.Keywords, exec.LocationPref, exec.Level)
 
 	seen, err := j.store.ListSeenJobKeys(ctx, exec.WorkerID)
 	if err != nil {
@@ -102,10 +102,19 @@ func (j *JobSearch) fetchAll(ctx context.Context, companies []models.Company) []
 // title) is what stops us dropping relevant roles whose titles are generic
 // (e.g. "Backend Engineer" whose description says "Go"). This is a recall net;
 // precision is the scorer's job.
-func filterJobs(jobs []models.Job, category string, keywords []string) []models.Job {
+// Level (experience) and location are hard filters: a role above the seeker's
+// level or outside their location preference is removed here, before scoring, so
+// recency can never float it back up. See levels.go for the rules.
+func filterJobs(jobs []models.Job, category string, keywords []string, locationPref, level string) []models.Job {
 	kwMatchers := compileKeywordMatchers(keywords)
 	out := make([]models.Job, 0, len(jobs))
 	for _, job := range jobs {
+		if !passesLevel(job.Title, job.Description, level) {
+			continue
+		}
+		if !matchesLocation(job.Location, locationPref) {
+			continue
+		}
 		if !matchesCategory(job, category) {
 			continue
 		}

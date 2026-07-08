@@ -74,6 +74,8 @@ function renderDetail(container, worker, runs) {
   const bits = [];
   if (worker.category) bits.push(prettyCategory(worker.category));
   if (worker.keywords && worker.keywords.length) bits.push(worker.keywords.join(", "));
+  if (worker.location_pref) bits.push("📍 " + worker.location_pref);
+  if (worker.level && worker.level !== "any") bits.push(prettyLevel(worker.level));
   container.append(
     el("div", { class: "card" }, [
       el("h4", { class: "section-label" }, "Search"),
@@ -108,4 +110,15 @@ function prettyCategory(c) {
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+function prettyLevel(l) {
+  const map = {
+    intern: "Intern",
+    junior: "Junior",
+    mid: "Mid level",
+    senior: "Senior",
+    staff_plus: "Staff+ / Lead",
+  };
+  return map[l] || l;
 }

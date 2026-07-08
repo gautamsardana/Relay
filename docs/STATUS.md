@@ -64,6 +64,54 @@ rows (logo, title, company/department, match score, Apply) in the web UI.
   LLM tier. Not needed at current scale.
 - A few catalog display names are plain title-case (e.g. "Circleci", "Clickup"); cosmetic.
 
+## Recent additions (latest first)
+- **Experience level** is now a first-class worker field (`level`: intern/junior/mid/
+  senior/staff_plus/any). Enforced deterministically in `internal/tools/levels.go`:
+  a title-rank ladder (`titleRank`) + a years-of-experience parser (`minYearsRequired`,
+  catches "8+ years" in the description) drop roles above the target level *before*
+  scoring. Replaces the old hardcoded `overSeniorRe`. Dropdown in the create form.
+- **Location filter fixed**: `matchesLocation` splits `location_pref` on commas and
+  matches ANY term (multi-city "London, Amsterdam, Berlin" now works; was matched as one
+  literal substring → always zero). Catalog is still US-centric, so EU coverage is thin
+  until we add European companies (deferred).
+- **Fit floor** (`fitFloor=0.4` in score_jobs.go): when scoring runs, a job below the
+  floor is dropped regardless of recency — stops fresh-but-poor-fit jobs floating up.
+- Scoring prompt/intent now includes the explicit target level + location preference.
+- `titleRank` tuned: bare "manager" is NOT a seniority signal (Product Manager = mid); only
+  "Engineering/Senior Manager" + Director/VP/Head/Staff/Principal/Lead count as staff. A
+  junior/associate modifier caps the rank down ("Associate Product Manager" = junior).
+- **Years-parser precision fix**: `minYearsRequired` was matching stray numbers
+  ("16-17 year olds", "10 years in the UK") and falsely dropping good mid roles. Now only
+  counts anchored requirements (`N+ years`, `N years ... experience`, `at least/minimum N
+  years`) with plural "years". Verified live against Monzo's board.
+- **Category-precision fix**: `categoryExcludeDepartments` drops non-IC functions that carry
+  "engineering" in their dept name (Celonis "Value Engineering" pre-sales, Sales/Solutions
+  Engineering, Customer Success) so they stop leaking into a software-engineering search.
+- **European companies** added to `companies.json` (now 176): 25 verified EU boards
+  (Monzo, Adyen, Qonto, N26, Mollie, Doctolib, Wolt, Pleo, GoCardless, Celonis, …) probed
+  live against the ATS APIs. Location search now returns real EU results.
+- **Scoring** is now batched + strict: scores up to 100 candidates/run in throttled
+  batches (`scoreBudget`/`batchSize`/`batchDelay` in score_jobs.go) to beat the trickle;
+  drops anything below 0.5 (`scoreThreshold`); LLM returns a one-line `reason` per job
+  (shown italic on each result row).
+- **Seniority filter**: `overSeniorRe` in job_search.go hard-excludes Principal/Staff/
+  Lead/Director/VP/etc titles (recency was floating low-fit senior roles past the threshold).
+- **Location filter**: worker has `location_pref` (new column + form field); job_search drops
+  jobs whose location doesn't contain it ("remote" / city / country, substring match).
+- **Apply flow**: clicking Apply marks the job pending; on tab-refocus the row shows an inline
+  "Applied? Yes/No" confirm; only Yes marks it applied (localStorage by job_id).
+- **Static files** served with no-cache headers (was causing stale-UI confusion).
+- **Schema note:** `workers` gained `category`, `keywords`, `location_pref` — re-apply schema.
+
+## Still open (build order)
+1. **Matches board** — persist every surfaced job to a real table (job + score + reason +
+   triage state), one consolidated per-worker view with filter/sort + in-app description +
+   server-side Applied/Saved/Dismissed. Today matches live only inside each run's step
+   output and `seen_jobs` stores keys only. (Designed, deferred — biggest UX leap.)
+2. **Edit worker** (change keywords/category/location/level/slider without recreate).
+3. Email notifications (digest of new matches + link to run page).
+4. Deploy (Dockerfile + compose or PaaS; needs a migration runner). 5. Commit (nothing committed yet).
+
 ## Design docs
 - `docs/job-search-subsystem-a-design.md` — the matching design.
 - `docs/job-search-structured-matching-plan.md` — the structured-matching + lifecycle + PDF plan

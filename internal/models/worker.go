@@ -17,6 +17,8 @@ type Worker struct {
 	Instructions    string
 	Category        string
 	Keywords        []string
+	LocationPref    string
+	Level           string
 	IntervalSeconds int
 	Status          WorkerStatus
 	ResumeText      string

@@ -97,6 +97,8 @@ func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 		RecencyWeight *int     `json:"recency_weight"`
 		Category      string   `json:"category"`
 		Keywords      []string `json:"keywords"`
+		LocationPref  string   `json:"location_pref"`
+		Level         string   `json:"level"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -109,7 +111,7 @@ func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 		recencyWeight = *req.RecencyWeight
 	}
 
-	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeText, recencyWeight, req.Category, req.Keywords)
+	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeText, recencyWeight, req.Category, req.Keywords, req.LocationPref, req.Level)
 	if err != nil {
 		slog.Error("api/CreateWorker", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)

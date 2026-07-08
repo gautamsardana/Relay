@@ -14,6 +14,15 @@ const CATEGORIES = [
   ["operations", "Operations"],
 ];
 
+const LEVELS = [
+  ["any", "Any level"],
+  ["intern", "Intern"],
+  ["junior", "Junior"],
+  ["mid", "Mid"],
+  ["senior", "Senior"],
+  ["staff_plus", "Staff+ / Lead"],
+];
+
 export function renderWorkerNew(_params, mount) {
   const user = getUser();
 
@@ -23,6 +32,10 @@ export function renderWorkerNew(_params, mount) {
   CATEGORIES.forEach(([v, label]) => category.append(el("option", { value: v }, label)));
 
   const keywords = el("input", { class: "input", placeholder: "golang, kubernetes (comma separated)" });
+  const locationPref = el("input", { class: "input", placeholder: "remote, or cities (comma separated, optional)" });
+
+  const level = el("select", { class: "input" });
+  LEVELS.forEach(([v, label]) => level.append(el("option", { value: v }, label)));
 
   const resumeFile = el("input", { class: "input", type: "file", accept: "application/pdf" });
   const resumeStatus = el("p", { class: "hint" }, "Upload a PDF to auto-fill category and keywords.");
@@ -69,6 +82,8 @@ export function renderWorkerNew(_params, mount) {
       recency_weight: 100 - parseInt(slider.value, 10),
       category: category.value,
       keywords: keywords.value.split(",").map((s) => s.trim()).filter(Boolean),
+      location_pref: locationPref.value.trim(),
+      level: level.value,
     };
     if (!payload.name) {
       errBox.textContent = "Name is required.";
@@ -105,6 +120,8 @@ export function renderWorkerNew(_params, mount) {
         ]),
         field("Category", category),
         field("Keywords (optional)", keywords, "Comma separated, e.g. golang, kubernetes"),
+        field("Location (optional)", locationPref, "Comma separated, e.g. remote  or  London, Amsterdam, Berlin"),
+        field("Experience level", level, "We filter out roles above this level (and ones demanding more years)."),
         field("Notes (optional)", instructions, "Extra context for ranking jobs."),
         field("Run every (hours)", interval, "Minimum 1 hour."),
         sliderField(slider, sliderVal),

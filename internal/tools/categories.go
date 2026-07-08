@@ -21,6 +21,20 @@ var categoryDepartments = map[string][]string{
 	"operations":           {"operations", "people", "human resources", "recruiting", "talent", "legal", "support"},
 }
 
+// categoryExcludeDepartments lists department/title fragments (substring,
+// case-insensitive) rejected for a category even when a positive synonym
+// matched. Needed because non-engineering functions carry "engineering" in their
+// name — e.g. Celonis's "Value Engineering" (pre-sales), "Sales Engineering",
+// "Solutions Engineering", "Customer Success" — which otherwise leak
+// sales/consulting roles into a software-engineering search.
+var categoryExcludeDepartments = map[string][]string{
+	"software_engineering": {
+		"value engineering", "sales engineering", "solutions engineering",
+		"solution engineering", "pre-sales", "presales", "professional services",
+		"customer success", "field cto", "value partner", "engagement manager",
+	},
+}
+
 // IsValidCategory reports whether c is a known category.
 func IsValidCategory(c string) bool {
 	_, ok := categoryDepartments[c]
@@ -49,16 +63,29 @@ func matchesCategory(job models.Job, category string) bool {
 	if len(syns) == 0 {
 		return true
 	}
-	matchers := compileKeywordMatchers(syns)
-
 	hay := strings.TrimSpace(job.Department + " " + job.Team)
 	if hay == "" {
 		hay = job.Title
 	}
-	for _, re := range matchers {
+
+	matched := false
+	for _, re := range compileKeywordMatchers(syns) {
 		if re.MatchString(hay) {
-			return true
+			matched = true
+			break
 		}
 	}
-	return false
+	if !matched {
+		return false
+	}
+
+	// Reject known non-IC functions that carry a positive synonym in their name
+	// (checked across department, team, and title).
+	exHay := strings.ToLower(job.Department + " " + job.Team + " " + job.Title)
+	for _, ex := range categoryExcludeDepartments[category] {
+		if strings.Contains(exHay, ex) {
+			return false
+		}
+	}
+	return true
 }

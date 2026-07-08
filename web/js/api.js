@@ -32,6 +32,8 @@ const normWorker = (w) =>
     instructions: w.Instructions,
     category: w.Category,
     keywords: w.Keywords || [],
+    location_pref: w.LocationPref,
+    level: w.Level,
     interval_seconds: w.IntervalSeconds,
     status: w.Status,
     resume_text: w.ResumeText,

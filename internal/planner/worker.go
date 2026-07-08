@@ -16,7 +16,7 @@ import (
 // API directly.
 const minIntervalSeconds = 3600 // 1 hour
 
-func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeText string, recencyWeight int, category string, keywords []string) (models.Worker, error) {
+func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeText string, recencyWeight int, category string, keywords []string, locationPref, level string) (models.Worker, error) {
 	if intervalSeconds < minIntervalSeconds {
 		return models.Worker{}, fmt.Errorf("interval must be at least %d seconds (1 hour), got %d", minIntervalSeconds, intervalSeconds)
 	}
@@ -25,6 +25,12 @@ func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions s
 	}
 	if category != "" && !tools.IsValidCategory(category) {
 		return models.Worker{}, fmt.Errorf("unknown category: %q", category)
+	}
+	if level == "" {
+		level = tools.LevelAny
+	}
+	if !tools.IsValidLevel(level) {
+		return models.Worker{}, fmt.Errorf("unknown level: %q", level)
 	}
 
 	id, _ := uuid.NewV7()
@@ -40,6 +46,8 @@ func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions s
 		Instructions:    instructions,
 		Category:        category,
 		Keywords:        keywords,
+		LocationPref:    locationPref,
+		Level:           level,
 		IntervalSeconds: intervalSeconds,
 		Status:          models.WorkerStatusActive,
 		ResumeText:      resumeText,

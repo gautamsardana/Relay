@@ -205,6 +205,8 @@ type Worker struct {
 	RecencyWeight   int32          `json:"recency_weight"`
 	Category        string         `json:"category"`
 	Keywords        string         `json:"keywords"`
+	LocationPref    string         `json:"location_pref"`
+	Level           string         `json:"level"`
 	NextRunAt       sql.NullTime   `json:"next_run_at"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`

@@ -25,32 +25,32 @@ func TestFilterJobs(t *testing.T) {
 	}
 
 	// category only: engineering dept → jobs 1 and 3, not the designer
-	got := filterJobs(jobs, "software_engineering", nil)
+	got := filterJobs(jobs, "software_engineering", nil, "", "")
 	if len(got) != 2 || !contains(got, "1") || !contains(got, "3") {
 		t.Fatalf("category filter: %+v", got)
 	}
 
 	// category + keyword: must be engineering AND mention "go" (whole word).
 	// "Golang" does NOT contain the whole word "go", so only job 1 matches.
-	got = filterJobs(jobs, "software_engineering", []string{"go"})
+	got = filterJobs(jobs, "software_engineering", []string{"go"}, "", "")
 	if len(got) != 1 || !contains(got, "1") {
 		t.Fatalf("category+keyword filter: %+v", got)
 	}
 
 	// keyword recall via description (no category): "golang" is in no title,
 	// only job 3's description.
-	got = filterJobs(jobs, "", []string{"golang"})
+	got = filterJobs(jobs, "", []string{"golang"}, "", "")
 	if len(got) != 1 || !contains(got, "3") {
 		t.Fatalf("golang via description: %+v", got)
 	}
 
 	// whole-word "go" must not match "logo" (job 2)
-	if got = filterJobs(jobs, "", []string{"go"}); contains(got, "2") {
+	if got = filterJobs(jobs, "", []string{"go"}, "", ""); contains(got, "2") {
 		t.Fatalf(`"go" must not match "logo": %+v`, got)
 	}
 
 	// no filters → all
-	if all := filterJobs(jobs, "", nil); len(all) != 3 {
+	if all := filterJobs(jobs, "", nil, "", ""); len(all) != 3 {
 		t.Fatalf("no filters should return all, got %d", len(all))
 	}
 }

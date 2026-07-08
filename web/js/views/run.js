@@ -167,6 +167,7 @@ function jobRow(j, rerender) {
     el("div", { class: "job-main" }, [
       el("div", { class: "job-title" }, j.title || "Untitled role"),
       el("div", { class: "job-sub muted" }, [j.company, j.department || j.location].filter(Boolean).join(" · ")),
+      j.reason ? el("div", { class: "job-reason" }, j.reason) : null,
     ]),
     el("div", { class: "job-posted muted" }, posted ? `Posted ${posted}` : ""),
     el("div", { class: "job-score" }, [

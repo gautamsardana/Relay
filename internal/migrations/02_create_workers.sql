@@ -11,6 +11,8 @@ CREATE TABLE workers (
     recency_weight INT NOT NULL DEFAULT 50,   -- 0..100: how much to weight recency vs resume-fit
     category     TEXT NOT NULL DEFAULT '',
     keywords     TEXT NOT NULL DEFAULT '',     -- comma-separated
+    location_pref TEXT NOT NULL DEFAULT '',    -- e.g. "remote", "New York"; '' = any
+    level        TEXT NOT NULL DEFAULT 'any',  -- intern|junior|mid|senior|staff_plus|any
     next_run_at  TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()

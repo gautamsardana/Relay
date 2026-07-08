@@ -36,6 +36,12 @@ const (
 // scoreThreshold drops weak matches: we don't surface anything below this blended score.
 const scoreThreshold = 0.5
 
+// fitFloor is a hard minimum on the LLM fit score, applied independently of
+// recency. Without it, a brand-new but poor-fit job (high recency, low fit)
+// could clear scoreThreshold purely on freshness. Only enforced when scoring
+// actually ran (RecencyWeight < 100).
+const fitFloor = 0.4
+
 // scoringDescriptionChars / scoringResumeChars cap text sent to the LLM. The
 // opening of a description and résumé carry most of the matching signal, so
 // trimming them keeps the request small without hurting ranking much.
@@ -80,10 +86,11 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 	now := time.Now()
 	w := float64(exec.RecencyWeight) / 100.0
 
-	// fit is 0..1 per job_id. Skip the LLM entirely when recency is weighted 100%.
-	fit := map[string]float64{}
-	if exec.RecencyWeight < 100 {
-		fit = sj.scoreFitBatched(ctx, buildIntent(exec), exec.ResumeText, jobs)
+	// Per-job fit + reason. Skip the LLM entirely when recency is weighted 100%.
+	scored := exec.RecencyWeight < 100
+	results := map[string]scoreResult{}
+	if scored {
+		results = sj.scoreFitBatched(ctx, buildIntent(exec), exec.ResumeText, jobs)
 	}
 
 	type rankedJob struct {
@@ -91,21 +98,28 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 		fit     float64
 		recency float64
 		final   float64
+		reason  string
 	}
 	ranked := make([]rankedJob, 0, len(jobs))
 	for _, job := range jobs {
-		f := fit[job.JobID]
+		res := results[job.JobID]
 		r := recencyScore(job.PostedAt, now)
-		ranked = append(ranked, rankedJob{job: job, fit: f, recency: r, final: w*r + (1-w)*f})
+		ranked = append(ranked, rankedJob{job: job, fit: res.fit, recency: r, final: w*r + (1-w)*res.fit, reason: res.reason})
 	}
 	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].final > ranked[j].final })
 
-	// Drop weak matches entirely (better to show a few great ones than pad).
+	// Drop weak matches entirely (better to show a few great ones than pad). The
+	// fit floor stops a fresh-but-poor-fit job from clearing the blended threshold
+	// on recency alone.
 	kept := make([]rankedJob, 0, len(ranked))
 	for _, rj := range ranked {
-		if rj.final >= scoreThreshold {
-			kept = append(kept, rj)
+		if rj.final < scoreThreshold {
+			continue
 		}
+		if scored && rj.fit < fitFloor {
+			continue
+		}
+		kept = append(kept, rj)
 	}
 	ranked = kept
 
@@ -130,6 +144,7 @@ func (sj *ScoreJobs) Execute(ctx context.Context, input map[string]any, exec Exe
 		m["fit_score"] = rj.fit
 		m["recency_score"] = rj.recency
 		m["score"] = rj.final
+		m["reason"] = rj.reason
 		out[i] = m
 	}
 	return map[string]any{"ranked_jobs": out}, nil
@@ -144,6 +159,12 @@ func buildIntent(exec ExecutionContext) string {
 	}
 	if len(exec.Keywords) > 0 {
 		b.WriteString("Must relate to: " + strings.Join(exec.Keywords, ", ") + ". ")
+	}
+	if exec.Level != "" && exec.Level != LevelAny {
+		b.WriteString("Target experience level: " + exec.Level + " (reject roles above this level). ")
+	}
+	if strings.TrimSpace(exec.LocationPref) != "" {
+		b.WriteString("Preferred location: " + exec.LocationPref + ". ")
 	}
 	if strings.TrimSpace(exec.Instructions) != "" {
 		b.WriteString("Notes: " + exec.Instructions)
@@ -173,9 +194,14 @@ func mostRecent(jobs []models.Job, n int) []models.Job {
 // calls, throttled to respect the per-minute token limit. Returns job_id → fit
 // (0..1). On a batch error (e.g. rate limit), it keeps what it has so the run
 // still completes; unscored jobs simply rank on recency this run.
-func (sj *ScoreJobs) scoreFitBatched(ctx context.Context, intent, resume string, jobs []models.Job) map[string]float64 {
+type scoreResult struct {
+	fit    float64
+	reason string
+}
+
+func (sj *ScoreJobs) scoreFitBatched(ctx context.Context, intent, resume string, jobs []models.Job) map[string]scoreResult {
 	jobs = mostRecent(jobs, scoreBudget)
-	fit := make(map[string]float64, len(jobs))
+	fit := make(map[string]scoreResult, len(jobs))
 	for i := 0; i < len(jobs); i += batchSize {
 		end := i + batchSize
 		if end > len(jobs) {
@@ -203,7 +229,7 @@ func (sj *ScoreJobs) scoreFitBatched(ctx context.Context, intent, resume string,
 // scoreFit asks the LLM for a 0..100 fit score per job and returns job_id → 0..1.
 // It scores each job against both the user's search intent (instructions) and
 // their résumé.
-func (sj *ScoreJobs) scoreFit(ctx context.Context, instructions, resume string, jobs []models.Job) (map[string]float64, error) {
+func (sj *ScoreJobs) scoreFit(ctx context.Context, instructions, resume string, jobs []models.Job) (map[string]scoreResult, error) {
 	type brief struct {
 		JobID       string `json:"job_id"`
 		Title       string `json:"title"`
@@ -237,7 +263,7 @@ Be strict and deterministic:
 - Infer the candidate's seniority/years of experience from the résumé. HEAVILY penalize roles that require clearly more seniority than the candidate has (e.g. Staff, Principal, Lead, Director, or "8+ years" roles for a mid-level candidate) even if the skills match — score those under 30.
 - Penalize wrong role, wrong domain, or a location that conflicts with the user's stated preference.
 - Reserve 70+ for genuinely strong matches in the right role, level, and domain.
-Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. No prose, no markdown.`
+Respond ONLY with a JSON array of objects {"job_id": string, "score": number, "reason": string}. The reason is one short phrase (max 12 words) on why it fits the candidate. No markdown.`
 	user := fmt.Sprintf("What the user is looking for:\n%s\n\nCandidate résumé:\n%s\n\nJobs to score:\n%s\n\nReturn the JSON array now.", instructions, resume, jobsJSON)
 
 	raw, err := sj.llm.Complete(ctx, system, user)
@@ -246,16 +272,17 @@ Respond ONLY with a JSON array of objects {"job_id": string, "score": number}. N
 	}
 
 	var scores []struct {
-		JobID string  `json:"job_id"`
-		Score float64 `json:"score"`
+		JobID  string  `json:"job_id"`
+		Score  float64 `json:"score"`
+		Reason string  `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(stripCodeFences(raw)), &scores); err != nil {
 		return nil, fmt.Errorf("parse scores: %w, raw: %s", err, raw)
 	}
 
-	out := make(map[string]float64, len(scores))
+	out := make(map[string]scoreResult, len(scores))
 	for _, s := range scores {
-		out[s.JobID] = clamp01(s.Score / 100.0)
+		out[s.JobID] = scoreResult{fit: clamp01(s.Score / 100.0), reason: s.Reason}
 	}
 	return out, nil
 }
