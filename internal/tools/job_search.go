@@ -118,7 +118,12 @@ func filterJobs(jobs []models.Job, category string, keywords []string, locationP
 		if !matchesCategory(job, category) {
 			continue
 		}
-		if len(kwMatchers) > 0 && !matchesAny(kwMatchers, job.Title+" "+job.Description) {
+		// Keywords hard-filter ONLY when there's no category to scope by. With a
+		// category set (the normal case), exact whole-word phrase matching tanks
+		// recall — "\bProduct Design\b" won't even match "Product Designer" — so
+		// keywords act as a precision signal for the scorer (see buildIntent),
+		// not a gate. This keeps keyword-only searches working as a fallback.
+		if category == "" && len(kwMatchers) > 0 && !matchesAny(kwMatchers, job.Title+" "+job.Description) {
 			continue
 		}
 		out = append(out, job)

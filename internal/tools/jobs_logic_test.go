@@ -30,10 +30,11 @@ func TestFilterJobs(t *testing.T) {
 		t.Fatalf("category filter: %+v", got)
 	}
 
-	// category + keyword: must be engineering AND mention "go" (whole word).
-	// "Golang" does NOT contain the whole word "go", so only job 1 matches.
+	// category + keyword: with a category set, keywords no longer hard-filter
+	// (they feed the scorer instead), so both engineering jobs pass regardless
+	// of the "go" keyword.
 	got = filterJobs(jobs, "software_engineering", []string{"go"}, "", "")
-	if len(got) != 1 || !contains(got, "1") {
+	if len(got) != 2 || !contains(got, "1") || !contains(got, "3") {
 		t.Fatalf("category+keyword filter: %+v", got)
 	}
 

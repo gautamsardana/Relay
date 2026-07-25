@@ -58,18 +58,32 @@ func TestPassesLevel(t *testing.T) {
 		want               bool
 	}
 	cases := []tc{
-		// mid drops senior titles and 8-year roles, keeps plain mid + junior
+		// THE FIX: un-suffixed (level-ambiguous) titles pass for junior/mid/senior.
+		{"Product Designer", "", LevelJunior, true},
+		{"Product Designer", "", LevelMid, true},
+		{"Software Engineer", "", LevelSenior, true},
+		{"UX Designer", "", LevelJunior, true},
+		// intern is the exception: it does NOT accept un-suffixed full-time roles.
+		{"Product Designer", "", LevelIntern, false},
+		{"Design Engineer Intern", "", LevelIntern, true},
+		{"Design Engineer Intern", "", LevelJunior, true}, // intern rank within junior band
+		// mid drops senior titles and 8-year roles, keeps plain/junior
 		{"Senior Software Engineer", "", LevelMid, false},
 		{"Software Engineer", "8+ years of experience required", LevelMid, false},
 		{"Software Engineer", "3+ years experience", LevelMid, true},
 		{"Junior Software Engineer", "", LevelMid, true},
-		{"Software Engineer Intern", "", LevelMid, false}, // below the mid floor
-		// senior keeps senior, drops staff and junior
+		{"Software Engineer Intern", "", LevelMid, false}, // explicit intern below mid floor
+		// junior drops explicit senior/staff, keeps un-suffixed + junior + intern
+		{"Senior Product Designer", "", LevelJunior, false},
+		{"Lead Product Designer", "", LevelJunior, false},
+		{"Junior Product Designer", "", LevelJunior, true},
+		// senior keeps senior + un-suffixed, drops staff and junior
 		{"Senior Software Engineer", "", LevelSenior, true},
 		{"Staff Software Engineer", "", LevelSenior, false},
 		{"Junior Software Engineer", "", LevelSenior, false},
-		// staff_plus keeps staff, drops intern
+		// staff_plus keeps staff + senior, drops intern/junior
 		{"Staff Software Engineer", "", LevelStaffPlus, true},
+		{"Senior Software Engineer", "", LevelStaffPlus, true},
 		{"Software Engineer Intern", "", LevelStaffPlus, false},
 		// any disables filtering
 		{"Principal Engineer", "12+ years", LevelAny, true},

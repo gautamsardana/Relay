@@ -36,22 +36,32 @@ const (
 	rankStaff  = 4
 )
 
-// levelRule is the allowed title-rank band plus the max required years of
-// experience for a target level. A job is dropped if its title rank falls
-// outside [floor, ceiling] or its description demands more than yearsCeiling.
+// levelRule bounds which EXPLICIT title ranks are acceptable for a target level,
+// plus the max required years of experience. allowUnknown decides what happens to
+// the common case of an un-suffixed title ("Product Designer", "Software
+// Engineer") which carries no seniority word: those get rankMid and are
+// level-ambiguous, so every level except intern lets them through (the years gate
+// and the LLM still judge them). Without this, a junior/mid search would throw
+// away nearly every normal role and keep only ones literally titled
+// "Junior"/"Senior", which returns almost nothing.
 type levelRule struct {
 	floor        int
 	ceiling      int
 	yearsCeiling int
+	allowUnknown bool // pass un-suffixed (rankMid) titles through the title gate
 }
 
-// "any" is intentionally absent — no rule means no level filtering.
+// "any" is intentionally absent — no rule means no level filtering. The band
+// applies only to titles with an EXPLICIT seniority signal; rankMid is handled by
+// allowUnknown. So e.g. junior rejects explicit Senior/Staff titles but keeps
+// "Product Designer", and senior rejects explicit Junior/Intern but keeps a plain
+// "Software Engineer".
 var levelRules = map[string]levelRule{
-	LevelIntern:    {floor: rankIntern, ceiling: rankIntern, yearsCeiling: 1},
-	LevelJunior:    {floor: rankIntern, ceiling: rankJunior, yearsCeiling: 2},
-	LevelMid:       {floor: rankJunior, ceiling: rankMid, yearsCeiling: 5},
-	LevelSenior:    {floor: rankMid, ceiling: rankSenior, yearsCeiling: 10},
-	LevelStaffPlus: {floor: rankMid, ceiling: rankStaff, yearsCeiling: 99},
+	LevelIntern:    {floor: rankIntern, ceiling: rankIntern, yearsCeiling: 1, allowUnknown: false},
+	LevelJunior:    {floor: rankIntern, ceiling: rankJunior, yearsCeiling: 2, allowUnknown: true},
+	LevelMid:       {floor: rankJunior, ceiling: rankJunior, yearsCeiling: 5, allowUnknown: true},
+	LevelSenior:    {floor: rankSenior, ceiling: rankSenior, yearsCeiling: 10, allowUnknown: true},
+	LevelStaffPlus: {floor: rankSenior, ceiling: rankStaff, yearsCeiling: 99, allowUnknown: true},
 }
 
 // Title keyword groups. Note "manager" alone is deliberately NOT a staff signal:
@@ -128,8 +138,14 @@ func passesLevel(title, description, level string) bool {
 	if !ok {
 		return true
 	}
-	rank := titleRank(title)
-	if rank < rule.floor || rank > rule.ceiling {
+	// An un-suffixed title (rankMid) has no explicit seniority signal, so it is
+	// ambiguous: allow it for every level except intern. Titles WITH a signal are
+	// held to the explicit [floor, ceiling] band.
+	if rank := titleRank(title); rank == rankMid {
+		if !rule.allowUnknown {
+			return false
+		}
+	} else if rank < rule.floor || rank > rule.ceiling {
 		return false
 	}
 	if minYearsRequired(description) > rule.yearsCeiling {
