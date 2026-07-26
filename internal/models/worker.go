@@ -19,6 +19,7 @@ type Worker struct {
 	Keywords        []string
 	LocationPref    string
 	Level           string
+	YearsExperience int
 	IntervalSeconds int
 	Status          WorkerStatus
 	ResumeText      string

@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gautamsardana/relay/internal/models"
@@ -102,8 +104,8 @@ func TestMatchesLocation(t *testing.T) {
 		want         bool
 	}
 	cases := []tc{
-		{"London, UK", "", true},                              // no pref → match all
-		{"London, UK", "London, Amsterdam, Berlin", true},     // multi-city, any match
+		{"London, UK", "", true},                          // no pref → match all
+		{"London, UK", "London, Amsterdam, Berlin", true}, // multi-city, any match
 		{"Berlin, Germany", "London, Amsterdam, Berlin", true},
 		{"San Francisco, CA", "London, Amsterdam, Berlin", false},
 		{"Remote - EU", "remote", true},
@@ -123,8 +125,8 @@ func TestCategoryExcludesNonICEngineering(t *testing.T) {
 	}{
 		{"Value Engineering", "Client Value Partner", false}, // Celonis pre-sales leak
 		{"Sales Engineering", "Solutions Engineer", false},
-		{"Engineering", "Backend Engineer", true},     // real SWE dept kept
-		{"Platform Engineering", "SRE", true},         // real SWE dept kept
+		{"Engineering", "Backend Engineer", true}, // real SWE dept kept
+		{"Platform Engineering", "SRE", true},     // real SWE dept kept
 		{"Customer Success", "Customer Success Engineer", false},
 	}
 	for _, c := range cases {
@@ -147,5 +149,88 @@ func TestFilterJobsLevelAndLocation(t *testing.T) {
 	got := filterJobs(jobs, "software_engineering", nil, "London", LevelMid)
 	if len(got) != 1 || got[0].JobID != "1" {
 		t.Fatalf("expected only job 1 (mid, London, <5yr), got %+v", got)
+	}
+}
+
+func TestPassesLevelBackstop(t *testing.T) {
+	cases := []struct {
+		name      string
+		seniority string
+		minYears  int
+		target    string
+		want      bool
+	}{
+		// The Middesk case: title says "Product Designer", posting demands 8 years.
+		{"8yr role vs junior", "senior", 8, LevelJunior, false},
+		{"senior role vs junior", "senior", 0, LevelJunior, false},
+		{"staff role vs mid", "staff_plus", 0, LevelMid, false},
+		{"mid role vs mid", "mid", 3, LevelMid, true},
+		{"junior role vs mid", "junior", 0, LevelMid, true},
+		{"senior role vs senior", "senior", 9, LevelSenior, true},
+		// Years alone can reject even when the LLM's seniority label looks fine.
+		{"years over ceiling", "mid", 9, LevelMid, false},
+		// "any" disables enforcement entirely.
+		{"staff role vs any", "staff_plus", 20, LevelAny, true},
+		{"staff role vs unset", "staff_plus", 20, "", true},
+		// An unparseable/missing seniority falls back to the years check only.
+		{"unknown seniority, ok years", "", 2, LevelJunior, true},
+		{"unknown seniority, bad years", "", 11, LevelJunior, false},
+	}
+	for _, c := range cases {
+		res := scoreResult{seniority: c.seniority, minYears: c.minYears}
+		if got := passesLevelBackstop(res, c.target); got != c.want {
+			t.Errorf("%s: passesLevelBackstop(%q,%d → %q) = %v, want %v",
+				c.name, c.seniority, c.minYears, c.target, got, c.want)
+		}
+	}
+}
+
+func TestScoringExcerptPrefersRequirements(t *testing.T) {
+	// Mirrors a real posting: boilerplate first, requirements far later.
+	desc := "ABOUT MIDDESK: Middesk makes it easier for businesses to work together. " +
+		strings.Repeat("More company history and mission copy. ", 40) +
+		"WHAT WE'RE LOOKING FOR: - Over 8+ years of in house product design experience."
+
+	got := scoringExcerpt(desc, 400)
+	if !strings.Contains(got, "8+ years") {
+		t.Fatalf("excerpt should capture the requirements, got: %q", got)
+	}
+	if strings.HasPrefix(got, "ABOUT MIDDESK") {
+		t.Fatalf("excerpt should skip opening boilerplate, got: %q", got)
+	}
+
+	// No marker: fall back to the opening rather than returning nothing.
+	plain := "We are hiring a designer to do design things and other design work."
+	if got := scoringExcerpt(plain, 400); got != plain {
+		t.Fatalf("fallback should return the head, got %q", got)
+	}
+}
+
+func TestIsRateLimited(t *testing.T) {
+	// The user's exact provider failures must all classify as rate-limited so the
+	// step fails fast with ErrRateLimited instead of grinding.
+	rateLimited := []error{
+		fmt.Errorf("groq completion error: 429, Rate limit reached for model llama-3.3. Please try again in 6.5s"),
+		fmt.Errorf("GPT completion error: 429 Too Many Requests, message: You exceeded your current quota, please check your plan and billing details."),
+		fmt.Errorf("groq completion error: 429 ... on tokens per day (TPD): Limit 100000, Used 97621."),
+		fmt.Errorf("status code: 429 too many requests"),
+	}
+	for _, err := range rateLimited {
+		if !isRateLimited(err) {
+			t.Errorf("should be rate-limited: %v", err)
+		}
+	}
+
+	// Non-rate-limit errors and nil must NOT be treated as rate limits — those
+	// keep the executor's normal retry path.
+	notLimited := []error{
+		fmt.Errorf("parse scores: unexpected end of JSON input"),
+		fmt.Errorf("groq completion error: 500 internal server error"),
+		nil,
+	}
+	for _, err := range notLimited {
+		if isRateLimited(err) {
+			t.Errorf("should NOT be rate-limited: %v", err)
+		}
 	}
 }

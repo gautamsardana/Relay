@@ -166,7 +166,8 @@ function jobRow(j, rerender) {
     companyLogo(j),
     el("div", { class: "job-main" }, [
       el("div", { class: "job-title" }, j.title || "Untitled role"),
-      el("div", { class: "job-sub muted" }, [j.company, j.department || j.location].filter(Boolean).join(" · ")),
+      el("div", { class: "job-sub muted" }, [j.company, j.department].filter(Boolean).join(" · ")),
+      j.location ? el("div", { class: "job-loc muted" }, "📍 " + j.location) : null,
       j.reason ? el("div", { class: "job-reason" }, j.reason) : null,
     ]),
     el("div", { class: "job-posted muted" }, posted ? `Posted ${posted}` : ""),

@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -17,6 +18,18 @@ import (
 	"github.com/gautamsardana/relay/internal/store"
 	"github.com/gautamsardana/relay/internal/tools"
 )
+
+// stepWorkTimeout bounds how long a single step's tool may run. Tools no longer
+// block on rate-limit backoff (score_jobs fails fast), so a healthy step finishes
+// in well under a minute; this is just a ceiling to catch a genuine hang. It MUST
+// stay below planner.stuckStepTimeout so the reconciler never reclaims a step
+// that is still legitimately running.
+const stepWorkTimeout = 5 * time.Minute
+
+// finalizeTimeout bounds the terminal bookkeeping writes (mark completed/failed,
+// publish next step). It runs on a fresh, Background-derived context so an expired
+// work deadline can't strand a step in 'processing'.
+const finalizeTimeout = 30 * time.Second
 
 type Worker struct {
 	store      *store.Store
@@ -61,11 +74,12 @@ func (w *Worker) SpawnExecutors() {
 
 func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error {
 	slog.Info("consumed a new request", "run_id", event.RunID, "step_id", event.StepID)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+
+	workCtx, cancelWork := context.WithTimeout(context.Background(), stepWorkTimeout)
+	defer cancelWork()
 
 	slog.Info("claiming step", "run_id", event.RunID, "step_id", event.StepID)
-	step, claimed, err := w.store.ClaimStep(ctx, event.StepID)
+	step, claimed, err := w.store.ClaimStep(workCtx, event.StepID)
 	if err != nil {
 		return fmt.Errorf("failed to claim step: %w", err)
 	}
@@ -75,65 +89,65 @@ func (w *Worker) HandleStep(qm *queue.QueueManager, event queue.StepEvent) error
 	}
 
 	slog.Info("validating tool", "run_id", step.RunID, "step_id", step.StepID, "tool", step.Tool)
-	fmt.Println(w.registry.Names())
 	tool, exists := w.registry.Get(step.Tool)
 	if !exists {
-		w.failStep(ctx, &step, fmt.Errorf("tool does not exist in the registry, tool: %s", step.Tool))
-		return fmt.Errorf("tool does not exist in the registry, tool: %s", step.Tool)
+		return w.finalize(&step, qm, nil, fmt.Errorf("tool %q not in registry", step.Tool))
 	}
 
 	slog.Info("resolving step inputs", "run_id", step.RunID, "step_id", step.StepID)
-	resolvedInput, err := w.resolveInputs(ctx, step.RunID, step.Input)
+	resolvedInput, err := w.resolveInputs(workCtx, step.RunID, step.Input)
 	if err != nil {
-		w.failStep(ctx, &step, fmt.Errorf("failed to resolve inputs: %w", err))
-		return err
+		return w.finalize(&step, qm, nil, fmt.Errorf("failed to resolve inputs: %w", err))
 	}
 
 	slog.Info("building execution context", "run_id", step.RunID, "step_id", step.StepID)
-	execCtx, err := w.buildExecutionContext(ctx, step.RunID)
+	execCtx, err := w.buildExecutionContext(workCtx, step.RunID)
 	if err != nil {
-		w.failStep(ctx, &step, fmt.Errorf("failed to build execution context: %w", err))
-		return err
+		return w.finalize(&step, qm, nil, fmt.Errorf("failed to build execution context: %w", err))
 	}
 
 	slog.Info("executing step", "run_id", step.RunID, "step_id", step.StepID, "tool", step.Tool)
-	result, err := tool.Execute(ctx, resolvedInput, execCtx)
-	if err != nil {
-		return w.handleStepError(ctx, qm, &step, err)
+	result, execErr := tool.Execute(workCtx, resolvedInput, execCtx)
+	return w.finalize(&step, qm, result, execErr)
+}
+
+func (w *Worker) finalize(step *models.Step, qm *queue.QueueManager, result map[string]any, execErr error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), finalizeTimeout)
+	defer cancel()
+
+	if execErr != nil {
+		// if rate-limited - no retry
+		if errors.Is(execErr, tools.ErrRateLimited) {
+			slog.Warn("step rate-limited; failing run, will retry on next schedule",
+				"run_id", step.RunID, "step_id", step.StepID, "error", execErr)
+			w.failStep(ctx, step, execErr)
+			return execErr
+		}
+		return w.handleStepError(ctx, qm, step, execErr)
 	}
 
 	slog.Info("updating step as completed", "run_id", step.RunID, "step_id", step.StepID)
-	err = w.store.UpdateStepAsCompleted(ctx, step.StepID, result)
-	if err != nil {
+	if err := w.store.UpdateStepAsCompleted(ctx, step.StepID, result); err != nil {
 		return fmt.Errorf("failed to update step status: %w", err)
 	}
 
-	slog.Info("looking for next step", "run_id", step.RunID, "step_id", step.StepID)
 	nextStep, hasNext, err := w.store.GetStepByRunAndNumber(ctx, step.RunID, step.StepNumber+1)
 	if err != nil {
-		slog.Error("failed to get next step", "run_id", step.RunID, "error", err)
 		return fmt.Errorf("failed to get next step: %w", err)
 	}
 
 	if !hasNext {
-		// last step completed, mark run success
-		err = w.store.UpdateRunStatus(ctx, step.RunID, models.RunStatusSuccess, "")
-		if err != nil {
+		if err := w.store.UpdateRunStatus(ctx, step.RunID, models.RunStatusSuccess, ""); err != nil {
 			return fmt.Errorf("failed to mark run success: %w", err)
 		}
 		slog.Info("run completed", "run_id", step.RunID)
 		return nil
 	}
 
-	if err = w.store.MarkStepPending(ctx, nextStep.StepID); err != nil {
+	if err := w.store.MarkStepPending(ctx, nextStep.StepID); err != nil {
 		return fmt.Errorf("failed to mark next step pending: %w", err)
 	}
-
-	err = qm.PublishStep(ctx, queue.StepEvent{
-		RunID:      nextStep.RunID,
-		StepID:     nextStep.StepID,
-	})
-	if err != nil {
+	if err := qm.PublishStep(ctx, queue.StepEvent{RunID: nextStep.RunID, StepID: nextStep.StepID}); err != nil {
 		return fmt.Errorf("failed to publish next step: %w", err)
 	}
 
@@ -154,15 +168,16 @@ func (w *Worker) buildExecutionContext(ctx context.Context, runID string) (tools
 		return tools.ExecutionContext{}, fmt.Errorf("get worker: %w", err)
 	}
 	return tools.ExecutionContext{
-		RunID:         runID,
-		WorkerID:      worker.WorkerID,
-		Instructions:  worker.Instructions,
-		Category:      worker.Category,
-		Keywords:      worker.Keywords,
-		LocationPref:  worker.LocationPref,
-		Level:         worker.Level,
-		ResumeText:    worker.ResumeText,
-		RecencyWeight: worker.RecencyWeight,
+		RunID:           runID,
+		WorkerID:        worker.WorkerID,
+		Instructions:    worker.Instructions,
+		Category:        worker.Category,
+		Keywords:        worker.Keywords,
+		LocationPref:    worker.LocationPref,
+		Level:           worker.Level,
+		YearsExperience: worker.YearsExperience,
+		ResumeText:      worker.ResumeText,
+		RecencyWeight:   worker.RecencyWeight,
 	}, nil
 }
 

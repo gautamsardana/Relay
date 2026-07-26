@@ -56,6 +56,12 @@ func (j *JobSearch) Execute(ctx context.Context, input map[string]any, exec Exec
 	newJobs := dropSeen(matched, seen)
 	slog.Info("job_search: filtered", "matched", len(matched), "new", len(newJobs))
 
+	// Filtering above ran against the FULL description (requirements often sit at
+	// the end of a posting). Only now, on the way into step output, do we trim.
+	for i := range newJobs {
+		newJobs[i].Description = ats.TruncateDescription(newJobs[i].Description)
+	}
+
 	return map[string]any{"jobs": jobsToMaps(newJobs)}, nil
 }
 
@@ -121,7 +127,7 @@ func filterJobs(jobs []models.Job, category string, keywords []string, locationP
 		// Keywords hard-filter ONLY when there's no category to scope by. With a
 		// category set (the normal case), exact whole-word phrase matching tanks
 		// recall — "\bProduct Design\b" won't even match "Product Designer" — so
-		// keywords act as a precision signal for the scorer (see buildIntent),
+		// keywords act as a precision signal for the scorer (see buildProfile),
 		// not a gate. This keeps keyword-only searches working as a fallback.
 		if category == "" && len(kwMatchers) > 0 && !matchesAny(kwMatchers, job.Title+" "+job.Description) {
 			continue

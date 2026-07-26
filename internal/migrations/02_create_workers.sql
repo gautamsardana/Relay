@@ -13,6 +13,7 @@ CREATE TABLE workers (
     keywords     TEXT NOT NULL DEFAULT '',     -- comma-separated
     location_pref TEXT NOT NULL DEFAULT '',    -- e.g. "remote", "New York"; '' = any
     level        TEXT NOT NULL DEFAULT 'any',  -- intern|junior|mid|senior|staff_plus|any
+    years_experience INT NOT NULL DEFAULT 0,   -- candidate's years of relevant experience
     next_run_at  TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()

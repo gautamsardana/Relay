@@ -16,7 +16,7 @@ import (
 // API directly.
 const minIntervalSeconds = 3600 // 1 hour
 
-func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeText string, recencyWeight int, category string, keywords []string, locationPref, level string) (models.Worker, error) {
+func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions string, intervalSeconds int, resumeText string, recencyWeight int, category string, keywords []string, locationPref, level string, yearsExperience int) (models.Worker, error) {
 	if intervalSeconds < minIntervalSeconds {
 		return models.Worker{}, fmt.Errorf("interval must be at least %d seconds (1 hour), got %d", minIntervalSeconds, intervalSeconds)
 	}
@@ -48,6 +48,7 @@ func (p *Planner) CreateWorker(ctx context.Context, userID, name, instructions s
 		Keywords:        keywords,
 		LocationPref:    locationPref,
 		Level:           level,
+		YearsExperience: yearsExperience,
 		IntervalSeconds: intervalSeconds,
 		Status:          models.WorkerStatusActive,
 		ResumeText:      resumeText,

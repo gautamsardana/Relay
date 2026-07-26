@@ -16,19 +16,30 @@ import (
 	"github.com/gautamsardana/relay/internal/models"
 )
 
-// maxDescriptionLen bounds stored/scored descriptions to keep token cost and
-// step-output size in check.
-const maxDescriptionLen = 1500
+// MaxStoredDescriptionLen bounds descriptions when they are persisted into step
+// output, purely to keep row size in check.
+//
+// It is deliberately NOT applied at fetch time. Requirements ("8+ years of
+// experience") usually appear near the END of a posting, so truncating on fetch
+// blinded the experience-level filter to the very text it needs — a "Product
+// Designer" role demanding 8 years sailed through a mid-level search because the
+// requirement sat past the cutoff. Filter on the full text; truncate on the way
+// out. The LLM prompt applies its own, much smaller cap.
+const MaxStoredDescriptionLen = 1500
 
 var (
 	htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 	wsRe      = regexp.MustCompile(`\s+`)
 )
 
-// cleanText normalizes whitespace and truncates already-plain text.
+// cleanText normalizes whitespace. It does not truncate — see MaxStoredDescriptionLen.
 func cleanText(s string) string {
-	s = wsRe.ReplaceAllString(s, " ")
-	return truncateRunes(strings.TrimSpace(s), maxDescriptionLen)
+	return strings.TrimSpace(wsRe.ReplaceAllString(s, " "))
+}
+
+// TruncateDescription trims a description to the storage cap.
+func TruncateDescription(s string) string {
+	return truncateRunes(s, MaxStoredDescriptionLen)
 }
 
 // htmlToText unescapes entity-encoded HTML (Greenhouse), strips tags, then cleans.

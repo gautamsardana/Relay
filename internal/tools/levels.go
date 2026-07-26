@@ -26,6 +26,39 @@ func IsValidLevel(l string) bool {
 	return false
 }
 
+// Levels returns the selectable levels, ordered from least to most senior.
+func Levels() []string {
+	return []string{LevelIntern, LevelJunior, LevelMid, LevelSenior, LevelStaffPlus, LevelAny}
+}
+
+// LevelYearsCeiling returns the max years of required experience acceptable for
+// a target level, and whether the level enforces one at all.
+func LevelYearsCeiling(level string) (int, bool) {
+	rule, ok := levelRules[level]
+	if !ok {
+		return 0, false
+	}
+	return rule.yearsCeiling, true
+}
+
+// LevelRank maps a level to its position on the seniority ladder, for comparing
+// a job's reported seniority against the worker's target.
+func LevelRank(level string) (int, bool) {
+	switch level {
+	case LevelIntern:
+		return rankIntern, true
+	case LevelJunior:
+		return rankJunior, true
+	case LevelMid:
+		return rankMid, true
+	case LevelSenior:
+		return rankSenior, true
+	case LevelStaffPlus:
+		return rankStaff, true
+	}
+	return 0, false
+}
+
 // Title ranks on a single ladder. titleRank maps a job title to one of these;
 // each target level allows a [floor, ceiling] band of ranks.
 const (

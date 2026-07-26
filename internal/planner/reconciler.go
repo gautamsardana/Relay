@@ -10,8 +10,13 @@ import (
 )
 
 const (
-	stuckStepTimeout    = 5 * time.Minute
-	reconcilerInterval  = 60 * time.Second
+	// stuckStepTimeout MUST exceed the executor's per-step work timeout
+	// (executor.stepWorkTimeout, 12m). A step waiting out provider rate limits is
+	// slow, not dead — reclaiming it before the executor's own deadline would
+	// re-run it concurrently with the live attempt, doubling LLM usage and making
+	// the rate limit worse. Only reclaim once no healthy executor could still hold it.
+	stuckStepTimeout   = 15 * time.Minute
+	reconcilerInterval = 60 * time.Second
 )
 
 func (p *Planner) StartReconciler() {

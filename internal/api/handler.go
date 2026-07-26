@@ -89,16 +89,17 @@ func (s *Server) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID        string   `json:"user_id"`
-		Name          string   `json:"name"`
-		Instructions  string   `json:"instructions"`
-		IntervalHours int      `json:"interval_hours"`
-		ResumeText    string   `json:"resume_text"`
-		RecencyWeight *int     `json:"recency_weight"`
-		Category      string   `json:"category"`
-		Keywords      []string `json:"keywords"`
-		LocationPref  string   `json:"location_pref"`
-		Level         string   `json:"level"`
+		UserID          string   `json:"user_id"`
+		Name            string   `json:"name"`
+		Instructions    string   `json:"instructions"`
+		IntervalHours   int      `json:"interval_hours"`
+		ResumeText      string   `json:"resume_text"`
+		RecencyWeight   *int     `json:"recency_weight"`
+		Category        string   `json:"category"`
+		Keywords        []string `json:"keywords"`
+		LocationPref    string   `json:"location_pref"`
+		Level           string   `json:"level"`
+		YearsExperience int      `json:"years_experience"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -111,7 +112,7 @@ func (s *Server) CreateWorker(w http.ResponseWriter, r *http.Request) {
 		recencyWeight = *req.RecencyWeight
 	}
 
-	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeText, recencyWeight, req.Category, req.Keywords, req.LocationPref, req.Level)
+	worker, err := s.planner.CreateWorker(r.Context(), req.UserID, req.Name, req.Instructions, req.IntervalHours*3600, req.ResumeText, recencyWeight, req.Category, req.Keywords, req.LocationPref, req.Level, req.YearsExperience)
 	if err != nil {
 		slog.Error("api/CreateWorker", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -150,6 +151,8 @@ func (s *Server) ParseResume(w http.ResponseWriter, r *http.Request) {
 		"resume_text":        result.Text,
 		"suggested_category": result.Category,
 		"suggested_keywords": result.Keywords,
+		"suggested_level":    result.Level,
+		"suggested_years":    result.YearsExperience,
 	})
 }
 

@@ -23,14 +23,26 @@ func TestCleanText_CollapsesWhitespace(t *testing.T) {
 	}
 }
 
+// cleanText must NOT truncate: the level filter reads requirements that often
+// sit at the end of a posting. Truncation happens only on the way into storage.
+func TestCleanTextDoesNotTruncate(t *testing.T) {
+	long := strings.Repeat("a", MaxStoredDescriptionLen+500)
+	if got := cleanText(long); len(got) != len(long) {
+		t.Fatalf("cleanText truncated: got %d chars, want %d", len(got), len(long))
+	}
+	if got := TruncateDescription(long); len([]rune(got)) != MaxStoredDescriptionLen {
+		t.Fatalf("TruncateDescription: got %d runes, want %d", len([]rune(got)), MaxStoredDescriptionLen)
+	}
+}
+
 func TestTruncateRunes(t *testing.T) {
-	long := strings.Repeat("é", maxDescriptionLen+50) // multibyte runes
-	got := truncateRunes(long, maxDescriptionLen)
-	if n := len([]rune(got)); n != maxDescriptionLen {
-		t.Fatalf("want %d runes, got %d", maxDescriptionLen, n)
+	long := strings.Repeat("é", MaxStoredDescriptionLen+50) // multibyte runes
+	got := truncateRunes(long, MaxStoredDescriptionLen)
+	if n := len([]rune(got)); n != MaxStoredDescriptionLen {
+		t.Fatalf("want %d runes, got %d", MaxStoredDescriptionLen, n)
 	}
 	short := "hello"
-	if truncateRunes(short, maxDescriptionLen) != short {
+	if truncateRunes(short, MaxStoredDescriptionLen) != short {
 		t.Fatalf("short string should be unchanged")
 	}
 }

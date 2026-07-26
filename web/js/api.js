@@ -34,6 +34,7 @@ const normWorker = (w) =>
     keywords: w.Keywords || [],
     location_pref: w.LocationPref,
     level: w.Level,
+    years_experience: w.YearsExperience,
     interval_seconds: w.IntervalSeconds,
     status: w.Status,
     resume_text: w.ResumeText,
@@ -108,6 +109,8 @@ export const api = {
       resume_text: d.resume_text || "",
       suggested_category: d.suggested_category || "",
       suggested_keywords: d.suggested_keywords || [],
+      suggested_level: d.suggested_level || "",
+      suggested_years: d.suggested_years || 0,
     };
   },
 };

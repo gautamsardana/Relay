@@ -37,8 +37,10 @@ export function renderWorkerNew(_params, mount) {
   const level = el("select", { class: "input" });
   LEVELS.forEach(([v, label]) => level.append(el("option", { value: v }, label)));
 
+  const years = el("input", { class: "input", type: "number", min: "0", max: "60", value: "0" });
+
   const resumeFile = el("input", { class: "input", type: "file", accept: "application/pdf" });
-  const resumeStatus = el("p", { class: "hint" }, "Upload a PDF to auto-fill category and keywords.");
+  const resumeStatus = el("p", { class: "hint" }, "Upload a PDF and we'll fill in the rest — you just review it.");
   let resumeText = "";
 
   resumeFile.addEventListener("change", async () => {
@@ -50,7 +52,10 @@ export function renderWorkerNew(_params, mount) {
       resumeText = r.resume_text;
       if (r.suggested_category) category.value = r.suggested_category;
       if (r.suggested_keywords.length) keywords.value = r.suggested_keywords.join(", ");
-      resumeStatus.textContent = "Résumé parsed ✓ — review the suggestions below.";
+      if (r.suggested_level) level.value = r.suggested_level;
+      if (r.suggested_years) years.value = String(r.suggested_years);
+      resumeStatus.textContent =
+        `Résumé read ✓ — filled in ${r.suggested_keywords.length} keywords, your level, and years below. Edit anything that looks off.`;
     } catch (e) {
       resumeStatus.textContent = "Could not parse that PDF: " + e.message;
     }
@@ -84,6 +89,7 @@ export function renderWorkerNew(_params, mount) {
       keywords: keywords.value.split(",").map((s) => s.trim()).filter(Boolean),
       location_pref: locationPref.value.trim(),
       level: level.value,
+      years_experience: parseInt(years.value, 10) || 0,
     };
     if (!payload.name) {
       errBox.textContent = "Name is required.";
@@ -119,9 +125,13 @@ export function renderWorkerNew(_params, mount) {
           resumeStatus,
         ]),
         field("Category", category),
-        field("Keywords (optional)", keywords, "Comma separated, e.g. golang, kubernetes"),
+        field("Keywords", keywords,
+          "Every job is scored against these. Add anything you want matched — more is better. Comma separated."),
+        el("div", { class: "field-row" }, [
+          field("Experience level", level, "Roles above this level are filtered out."),
+          field("Years of experience", years, "Used to judge seniority fit."),
+        ]),
         field("Location (optional)", locationPref, "Comma separated, e.g. remote  or  London, Amsterdam, Berlin"),
-        field("Experience level", level, "We filter out roles above this level (and ones demanding more years)."),
         field("Notes (optional)", instructions, "Extra context for ranking jobs."),
         field("Run every (hours)", interval, "Minimum 1 hour."),
         sliderField(slider, sliderVal),

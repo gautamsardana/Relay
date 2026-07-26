@@ -76,6 +76,7 @@ function renderDetail(container, worker, runs) {
   if (worker.keywords && worker.keywords.length) bits.push(worker.keywords.join(", "));
   if (worker.location_pref) bits.push("📍 " + worker.location_pref);
   if (worker.level && worker.level !== "any") bits.push(prettyLevel(worker.level));
+  if (worker.years_experience) bits.push(`${worker.years_experience} yrs exp`);
   container.append(
     el("div", { class: "card" }, [
       el("h4", { class: "section-label" }, "Search"),

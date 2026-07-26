@@ -65,6 +65,29 @@ rows (logo, title, company/department, match score, Apply) in the web UI.
 - A few catalog display names are plain title-case (e.g. "Circleci", "Clickup"); cosmetic.
 
 ## Recent additions (latest first)
+- **Description truncation bug (was defeating the whole level gate).** ATS adapters truncated
+  descriptions to 1500 chars *at fetch time*, but requirements ("Over 8+ years…") usually sit
+  near the END of a posting — so the years gate was reading text that didn't contain the
+  requirement. A Middesk "Product Designer" demanding 8 years passed a mid-level search for
+  exactly this reason. Now `cleanText` doesn't truncate; `job_search` filters on the full text
+  and calls `ats.TruncateDescription` only when writing step output.
+- **Profile-based matching (replaces résumé-text scoring).** At creation the LLM extracts a
+  full profile from the résumé — category, 12-20 keywords, `level`, `years_experience` — and
+  pre-fills the form; the user only reviews/edits. `score_jobs` now scores against that
+  compact profile (`buildProfile`) instead of raw résumé text.
+- **PDF extraction fixed.** `GetPlainText` dropped spaces on many résumés, producing
+  "CenterforDigitalExperiences" and silently degrading every score. `resume.ExtractText` now
+  rebuilds word spacing from glyph X-positions (`GetTextByRow`), with a fallback.
+- **Level enforcement is two-stage.** Deterministic gate first (cheap, saves tokens): explicit
+  senior/staff title words + hard "N+ years" numbers only — no attempt to regex fuzzy phrasing.
+  Then `passesLevelBackstop` uses `seniority`/`min_years` that the LLM returns alongside its
+  score (no extra call) to drop what the regex can't read ("seasoned", "you'll mentor").
+- **Level band fix (was returning ~0 jobs).** Un-suffixed titles ("Product Designer") default to
+  rankMid and were being rejected by junior/mid searches. They're level-ambiguous, so every
+  level except intern now lets them through. Live design+junior pool went 1 → 18.
+- **Keywords no longer hard-filter** when a category is set (exact whole-word phrase matching
+  tanked recall: "\bProduct Design\b" misses "Product Designer"). They feed the scorer instead.
+- Job rows now show the role's **location**.
 - **Experience level** is now a first-class worker field (`level`: intern/junior/mid/
   senior/staff_plus/any). Enforced deterministically in `internal/tools/levels.go`:
   a title-rank ladder (`titleRank`) + a years-of-experience parser (`minYearsRequired`,
