@@ -4,9 +4,9 @@ A distributed runtime for persistent, scheduled AI workers. Go, PostgreSQL, Rabb
 
 The interesting part of this repo isn't that it uses an LLM, it's where it stopped using one as its core layer.
 Relay began as a general agent runtime: you give it a natural-language goal, an LLM reads a tool
-registry (web search, Notion, Gmail etc) and plans the steps during run-time, and the steps are individually executed asynchronously. That
-design didn't survive contact with reality because building a general agent for any task meant that you had flexibility but it also meant
-that your system was average at doing a lot of things. No one is going to use that.
+registry (web search, Notion, Gmail etc) and plans the steps during run-time, and the steps are individually executed asynchronously. While building that system, 
+I realized that the design is not going to work because a general agent for any task meant that you had flexibility, but it also meant
+that your system was average at doing a lot of things. Not a lot of people are going to use that.
 
 So I tore it out
 ([`48579d2`](../../commit/48579d2)) and rebuilt the same product on a deterministic pipeline. My
@@ -33,6 +33,19 @@ whole class of failures disappeared, and what remained became testable, which ma
 because the real work turned out to be data quality, not orchestration.
 
 > **The rule: the LLM makes judgments, never control-flow decisions.**
+
+## The model
+
+- **Worker** - a standing job search you configure once: your profile plus filters
+  (category, keywords, level, location) and a schedule. You can run as many as you want in parallel -
+  one for backend, one for Go, one for New York, each with its own schedule and its
+  own dedup history.
+- **Run** - one execution of a worker, fired on its schedule or manually. A worker
+  produces a stream of runs over its lifetime.
+- **Step** - a run is an ordered list of steps (`job_search → score_jobs`). Each step
+  is a durable row that the worker pool claims and executes independently and
+  asynchronously - one step at a time, and a crash mid-run resumes from the last
+  completed step rather than restarting.
 
 ## Architecture
 
