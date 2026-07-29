@@ -4,8 +4,8 @@ A distributed runtime for persistent, scheduled AI workers. Go, PostgreSQL, Rabb
 
 The interesting part of this repo isn't that it uses an LLM, it's where it stopped using one as its core layer.
 Relay began as a general agent runtime: you give it a natural-language goal, an LLM reads a tool
-registry (web search, Notion, Gmail etc) and plans the steps during run-time, and the steps are individually executed asynchronously. While building that system, 
-I realized that the design is not going to work because a general agent for any task meant that you had flexibility, but it also meant
+registry (web search, Notion, Gmail etc) and plans the steps during runtime, and the steps are individually executed asynchronously. While building that system, 
+I realized that the design wasn't going to work because a general agent for any task meant that you had flexibility, but it also meant
 that your system was average at doing a lot of things. Not a lot of people are going to use that.
 
 So I tore it out
@@ -76,7 +76,7 @@ publishes the next, so no single process holds the workflow in memory.
    sources (a domain search API and the YC directory), verifies each board, and stores new
    companies.
 
-## Correctness (where my payments background shows up a little)
+## Correctness
 
 - **Exactly-once step execution.** RabbitMQ is at-least-once, so duplicate deliveries are normal.
   Claiming a step is a conditional update, not a read-then-write:
@@ -120,7 +120,7 @@ talk its way past a filter.
   results be queried, filtered, and tracked across runs.
 - **No real auth** - login is an email lookup with no sessions or passwords. Fine for a
   single-user tool, nothing more.
-- Three tools (`web_search`, `http_request`, `document_read`) are useless right now from the planner era, but I have later plans for them.
+- Three tools (`web_search`, `http_request`, `document_read`) are unused for now, but I have plans for them.
 
 ## Running it
 
@@ -150,6 +150,6 @@ The UI is served at `http://localhost:8080/`.
 
 ## Future
 
-This is turning into a blog now but once I make the job seach pipeline up to a point where I feel satisfied, 
+This is turning into a blog now but once I make the job search pipeline up to a point where I feel satisfied, 
 I want to do something with agentic transactions. The reason I have made this infrastructure is so that I
 am flexible to build more pipelines on top of this, if I need it to solve some other problem.
